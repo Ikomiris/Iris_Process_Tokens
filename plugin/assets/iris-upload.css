@@ -1,0 +1,577 @@
+/**
+ * Fichier : wp-content/plugins/image-processor-tokens/assets/iris-upload.css
+ * Styles pour la zone d'upload Iris Process - Design allégé v1.0.4
+ * Auteur : Ikomiris
+ */
+
+/* Import des polices avec priorité */
+@import url('https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Heritier:wght@300;400;700&display=swap');
+
+/* Reset et base */
+#iris-upload-container * {
+    box-sizing: border-box;
+}
+
+/* Container principal avec sélecteur spécifique */
+div#iris-upload-container {
+    max-width: 1100px !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    font-family: 'Heritier', 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+    color: #F4F4F2 !important;
+    background: transparent !important;
+    border-radius: 0 !important;
+}
+
+/* Zone des jetons avec priorité maximale */
+div#iris-upload-container .iris-token-info {
+    background: #0C2D39 !important;
+    color: #F4F4F2 !important;
+    padding: 32px !important;
+    border-radius: 12px !important;
+    margin-bottom: 32px !important;
+    text-align: center !important;
+    border: none !important;
+    box-shadow: none !important;
+    background-image: none !important;
+    background-attachment: initial !important;
+    background-size: initial !important;
+    background-repeat: initial !important;
+    background-position: initial !important;
+    background-origin: initial !important;
+    background-clip: initial !important;
+}
+
+div#iris-upload-container .iris-token-info h3 {
+    margin: 0 0 16px 0 !important;
+    font-size: 20px !important;
+    font-weight: 400 !important;
+    font-family: 'Heritier', 'Lato', sans-serif !important;
+    text-transform: uppercase !important;
+    letter-spacing: 1px !important;
+    color: #F4F4F2 !important;
+}
+
+div#iris-upload-container .iris-token-info #token-balance {
+    background: #3de9f4 !important;
+    color: #0C2D39 !important;
+    padding: 8px 20px !important;
+    border-radius: 24px !important;
+    font-weight: 400 !important;
+    font-size: 18px !important;
+    display: inline-block !important;
+    margin: 8px 0 !important;
+    font-family: 'Heritier', 'Lato', sans-serif !important;
+}
+
+div#iris-upload-container .iris-warning {
+    background: #F05A28 !important;
+    color: #F4F4F2 !important;
+    padding: 16px 24px !important;
+    border-radius: 12px !important;
+    margin: 16px 0 0 0 !important;
+    font-weight: 400 !important;
+    font-family: 'Heritier', 'Lato', sans-serif !important;
+}
+
+div#iris-upload-container .iris-warning a {
+    color: #F4F4F2 !important;
+    text-decoration: underline !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+}
+
+div#iris-upload-container .iris-warning a:hover {
+    color: #3de9f4 !important;
+}
+
+/* Zone d'upload avec priorité */
+div#iris-upload-container .iris-upload-zone {
+    background: #15697B !important;
+    border-radius: 12px !important;
+    overflow: hidden !important;
+    margin-bottom: 32px !important;
+    border: none !important;
+    box-shadow: none !important;
+    background-image: none !important;
+}
+
+div#iris-upload-container .iris-drop-zone {
+    border: 1px dashed #3de9f4 !important;
+    border-radius: 12px !important;
+    padding: 80px 32px !important;
+    text-align: center !important;
+    cursor: pointer !important;
+    transition: all 0.3s ease !important;
+    background: #15697B !important;
+    background-image: none !important;
+    backdrop-filter: none !important;
+}
+
+div#iris-upload-container .iris-drop-zone:hover,
+div#iris-upload-container .iris-drop-zone.iris-drag-over {
+    border-color: #F05A28 !important;
+    background: #15697B !important;
+    transform: translateY(-4px) !important;
+    box-shadow: 0 8px 32px rgba(61, 233, 244, 0.2) !important;
+}
+
+div#iris-upload-container .iris-drop-content .iris-upload-icon {
+    margin-bottom: 24px !important;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    transition: all 0.3s ease !important;
+}
+
+div#iris-upload-container .iris-drop-content .iris-upload-icon svg {
+    transition: all 0.3s ease !important;
+}
+
+div#iris-upload-container .iris-drop-zone:hover .iris-upload-icon svg {
+    transform: scale(1.1) !important;
+}
+
+div#iris-upload-container .iris-drop-zone:hover .iris-upload-icon svg line,
+div#iris-upload-container .iris-drop-zone:hover .iris-upload-icon svg path {
+    stroke: #F05A28 !important;
+}
+
+div#iris-upload-container .iris-drop-content h4 {
+    color: #F4F4F2 !important;
+    font-size: 24px !important;
+    margin: 0 0 16px 0 !important;
+    font-weight: 400 !important;
+    font-family: 'Heritier', 'Lato', sans-serif !important;
+    text-transform: capitalize !important;
+}
+
+div#iris-upload-container .iris-drop-content p {
+    color: #F4F4F2 !important;
+    margin: 8px 0 !important;
+    font-size: 16px !important;
+    font-weight: 300 !important;
+    font-family: 'Heritier', 'Lato', sans-serif !important;
+    opacity: 0.9 !important;
+}
+
+/* Prévisualisation du fichier */
+div#iris-upload-container #iris-file-preview {
+    padding: 24px !important;
+    background: #15697B !important;
+    border: 2px solid #3de9f4 !important;
+    border-radius: 12px !important;
+    margin: 24px 0 !important;
+}
+
+div#iris-upload-container .iris-file-info {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    padding: 20px !important;
+    background: rgba(244, 244, 242, 0.1) !important;
+    border-radius: 12px !important;
+    border: 1px solid rgba(61, 233, 244, 0.3) !important;
+}
+
+div#iris-upload-container #iris-file-name {
+    font-weight: 400 !important;
+    color: #F4F4F2 !important;
+    flex: 1 !important;
+    margin-right: 20px !important;
+    word-break: break-word !important;
+    font-size: 16px !important;
+    font-family: 'Heritier', 'Lato', sans-serif !important;
+}
+
+div#iris-upload-container #iris-file-size {
+    color: #3de9f4 !important;
+    font-size: 14px !important;
+    margin-right: 20px !important;
+    font-weight: 300 !important;
+    font-family: 'Heritier', 'Lato', sans-serif !important;
+}
+
+div#iris-upload-container #iris-remove-file {
+    background: #F05A28 !important;
+    color: #F4F4F2 !important;
+    border: none !important;
+    width: 36px !important;
+    height: 36px !important;
+    border-radius: 50% !important;
+    cursor: pointer !important;
+    font-size: 20px !important;
+    line-height: 1 !important;
+    transition: all 0.3s ease !important;
+    font-weight: 700 !important;
+}
+
+div#iris-upload-container #iris-remove-file:hover {
+    background: #d44a20 !important;
+    transform: scale(1.1) !important;
+    box-shadow: 0 4px 16px rgba(240, 90, 40, 0.4) !important;
+}
+
+/* Actions d'upload */
+div#iris-upload-container .iris-upload-actions {
+    padding: 24px !important;
+    background: #15697B !important;
+    border-top: 1px solid rgba(61, 233, 244, 0.3) !important;
+}
+
+div#iris-upload-container #iris-upload-btn {
+    width: 100% !important;
+    background: #F05A28 !important;
+    color: #F4F4F2 !important;
+    border: none !important;
+    padding: 20px 32px !important;
+    border-radius: 24px !important;
+    font-size: 16px !important;
+    font-weight: 400 !important;
+    cursor: pointer !important;
+    transition: all 0.3s ease !important;
+    position: relative !important;
+    overflow: hidden !important;
+    text-transform: uppercase !important;
+    letter-spacing: 1px !important;
+    font-family: 'Heritier', 'Lato', sans-serif !important;
+    background-image: none !important;
+}
+
+div#iris-upload-container #iris-upload-btn:hover:not(:disabled) {
+    transform: translateY(-3px) !important;
+    box-shadow: 0 12px 32px rgba(240, 90, 40, 0.4) !important;
+    background: #d44a20 !important;
+}
+
+div#iris-upload-container #iris-upload-btn:disabled {
+    opacity: 0.5 !important;
+    cursor: not-allowed !important;
+    transform: none !important;
+    background: #124C58 !important;
+}
+
+/* Historique des traitements */
+div#iris-upload-container #iris-process-history {
+    background: #F4F4F2 !important;
+    padding: 32px !important;
+    border-radius: 12px !important;
+    border: none !important;
+    box-shadow: none !important;
+    background-image: none !important;
+}
+
+div#iris-upload-container #iris-process-history h3 {
+    color: #0C2D39 !important;
+    margin: 0 0 24px 0 !important;
+    font-size: 24px !important;
+    font-weight: 700 !important;
+    font-family: 'Lato', sans-serif !important;
+    text-transform: uppercase !important;
+    letter-spacing: 1px !important;
+}
+
+div#iris-upload-container .iris-history-items {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 16px !important;
+}
+
+div#iris-upload-container .iris-history-item {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    padding: 20px 24px !important;
+    background: rgba(12, 45, 57, 0.05) !important;
+    border-radius: 12px !important;
+    border-left: 4px solid #3de9f4 !important;
+    transition: all 0.3s ease !important;
+}
+
+div#iris-upload-container .iris-history-item:hover {
+    background: rgba(12, 45, 57, 0.1) !important;
+    transform: translateX(8px) !important;
+    box-shadow: 0 4px 16px rgba(61, 233, 244, 0.2) !important;
+}
+
+div#iris-upload-container .iris-history-item.iris-status-completed {
+    border-left-color: #3de9f4 !important;
+    background: rgba(61, 233, 244, 0.1) !important;
+}
+
+div#iris-upload-container .iris-history-item.iris-status-processing {
+    border-left-color: #F05A28 !important;
+    background: rgba(240, 90, 40, 0.1) !important;
+}
+
+div#iris-upload-container .iris-history-item.iris-status-error {
+    border-left-color: #F05A28 !important;
+    background: rgba(240, 90, 40, 0.1) !important;
+}
+
+div#iris-upload-container .iris-history-item.iris-status-uploaded {
+    border-left-color: #124C58 !important;
+    background: rgba(18, 76, 88, 0.1) !important;
+}
+
+div#iris-upload-container .iris-history-info {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+    flex: 1 !important;
+}
+
+div#iris-upload-container .iris-history-info strong {
+    color: #0C2D39 !important;
+    font-size: 16px !important;
+    font-weight: 700 !important;
+    font-family: 'Lato', sans-serif !important;
+}
+
+div#iris-upload-container .iris-status {
+    display: inline-block !important;
+    padding: 4px 12px !important;
+    border-radius: 24px !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+    font-family: 'Lato', sans-serif !important;
+}
+
+div#iris-upload-container .iris-status-completed .iris-status {
+    background: #3de9f4 !important;
+    color: #0C2D39 !important;
+}
+
+div#iris-upload-container .iris-status-processing .iris-status {
+    background: #F05A28 !important;
+    color: #F4F4F2 !important;
+}
+
+div#iris-upload-container .iris-status-error .iris-status {
+    background: #F05A28 !important;
+    color: #F4F4F2 !important;
+}
+
+div#iris-upload-container .iris-status-uploaded .iris-status {
+    background: #124C58 !important;
+    color: #F4F4F2 !important;
+}
+
+div#iris-upload-container .iris-date {
+    color: #124C58 !important;
+    font-size: 14px !important;
+    font-weight: 400 !important;
+    font-family: 'Lato', sans-serif !important;
+}
+
+div#iris-upload-container .iris-download {
+    margin-left: 24px !important;
+}
+
+div#iris-upload-container .iris-download-btn {
+    display: inline-block !important;
+    background: #3de9f4 !important;
+    color: #0C2D39 !important;
+    padding: 12px 20px !important;
+    border-radius: 24px !important;
+    text-decoration: none !important;
+    font-size: 14px !important;
+    font-weight: 700 !important;
+    transition: all 0.3s ease !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+    font-family: 'Lato', sans-serif !important;
+}
+
+div#iris-upload-container .iris-download-btn:hover {
+    background: #F05A28 !important;
+    color: #F4F4F2 !important;
+    text-decoration: none !important;
+    transform: translateY(-2px) !important;
+    box-shadow: 0 8px 20px rgba(61, 233, 244, 0.3) !important;
+}
+
+/* Messages d'alerte */
+div#iris-upload-container .iris-alert {
+    padding: 20px 24px !important;
+    border-radius: 12px !important;
+    margin: 24px 0 !important;
+    font-weight: 400 !important;
+    font-size: 16px !important;
+    font-family: 'Lato', sans-serif !important;
+}
+
+div#iris-upload-container .iris-alert-success {
+    background: rgba(61, 233, 244, 0.1) !important;
+    color: #0C2D39 !important;
+    border: 2px solid #3de9f4 !important;
+}
+
+div#iris-upload-container .iris-alert-error {
+    background: rgba(240, 90, 40, 0.1) !important;
+    color: #0C2D39 !important;
+    border: 2px solid #F05A28 !important;
+}
+
+/* États spéciaux */
+div#iris-upload-container .iris-upload-zone[style*="opacity"] {
+    position: relative !important;
+}
+
+div#iris-upload-container .iris-upload-zone[style*="opacity"]::after {
+    content: "ACHETEZ DES JETONS POUR CONTINUER" !important;
+    position: absolute !important;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    background: #F05A28 !important;
+    color: #F4F4F2 !important;
+    padding: 16px 32px !important;
+    border-radius: 24px !important;
+    font-weight: 700 !important;
+    z-index: 10 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 1px !important;
+    font-family: 'Lato', sans-serif !important;
+    font-size: 14px !important;
+    box-shadow: 0 8px 32px rgba(240, 90, 40, 0.4) !important;
+}
+
+/* Loading states */
+.iris-btn-loading {
+    display: inline-block !important;
+    animation: iris-pulse 1.5s infinite !important;
+}
+
+@keyframes iris-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    div#iris-upload-container {
+        padding: 16px !important;
+    }
+    
+    div#iris-upload-container .iris-token-info {
+        padding: 24px 16px !important;
+    }
+    
+    div#iris-upload-container .iris-token-info h3 {
+        font-size: 18px !important;
+    }
+    
+    div#iris-upload-container .iris-drop-zone {
+        padding: 40px 16px !important;
+    }
+    
+    div#iris-upload-container .iris-drop-content h4 {
+        font-size: 20px !important;
+    }
+    
+    div#iris-upload-container .iris-drop-content .iris-upload-icon svg {
+        width: 48px !important;
+        height: 48px !important;
+    }
+    
+    div#iris-upload-container .iris-history-item {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 12px !important;
+    }
+    
+    div#iris-upload-container .iris-download {
+        margin-left: 0 !important;
+        width: 100% !important;
+    }
+    
+    div#iris-upload-container .iris-download-btn {
+        display: block !important;
+        text-align: center !important;
+        width: 100% !important;
+    }
+    
+    div#iris-upload-container .iris-file-info {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 12px !important;
+    }
+    
+    div#iris-upload-container #iris-file-name {
+        margin-right: 0 !important;
+    }
+    
+    div#iris-upload-container #iris-process-history {
+        padding: 24px 16px !important;
+    }
+}
+
+/* Animations */
+@keyframes iris-fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(24px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes iris-slideInRight {
+    from {
+        opacity: 0;
+        transform: translateX(32px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+div#iris-upload-container .iris-history-item {
+    animation: iris-fadeIn 0.4s ease !important;
+}
+
+div#iris-upload-container {
+    animation: iris-slideInRight 0.6s ease !important;
+}
+
+/* Effets de focus pour l'accessibilité */
+div#iris-upload-container #iris-file-input:focus + .iris-drop-zone,
+div#iris-upload-container .iris-drop-zone:focus-within {
+    outline: 3px solid #3de9f4 !important;
+    outline-offset: 2px !important;
+}
+
+div#iris-upload-container #iris-upload-btn:focus {
+    outline: 3px solid #3de9f4 !important;
+    outline-offset: 2px !important;
+}
+
+/* Animations hover supplémentaires */
+div#iris-upload-container .iris-token-info:hover {
+    transform: translateY(-2px) !important;
+    transition: transform 0.3s ease !important;
+}
+
+/* Ajustement du style "Aucun traitement" */
+div#iris-upload-container #iris-process-history p {
+    color: #124C58 !important;
+    text-align: center !important;
+    padding: 20px !important;
+    font-family: 'Lato', sans-serif !important;
+    font-weight: 400 !important;
+}
+
+/* Style pour les éléments interactifs */
+div#iris-upload-container button, 
+div#iris-upload-container .iris-download-btn, 
+div#iris-upload-container .iris-drop-zone {
+    position: relative !important;
+    z-index: 1 !important;
+}

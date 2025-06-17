@@ -1,35 +1,97 @@
-# 📸 Iris Process - WordPress Image Processing Plugin
+# Image Processor Tokens - Plugin WordPress
 
-WordPress plugin for RAW image processing with token system and SureCart integration.
+Plugin WordPress pour le traitement d'images avec système de tokens développé pour le site iris4pro.com.
 
-## 🚀 Quick Start
+## 📋 Description du projet
 
-1. Upload plugin to `wp-content/plugins/image-processor-tokens/`
-2. Activate plugin in WordPress admin
-3. Use shortcode `[iris_upload_zone]` on any page
-4. Configure API settings in admin panel
+Ce plugin WordPress permet de traiter et manipuler des images en utilisant un système de tokens sécurisé. Il s'intègre parfaitement dans l'écosystème WordPress et offre une interface d'administration intuitive.
 
-## 📋 Current Status
+## 🛠 Configuration de développement
 
-- ✅ **WordPress Frontend** - Complete (v1.0.4)
-- 🔄 **Python API Backend** - In Development  
-- 🔄 **SureCart Integration** - Pending Configuration
+### Environnement local
+- **IDE Principal :** Visual Studio Code
+- **IDE Secondaire :** Cursor (pour l'assistance IA)
+- **Serveur local :** XAMPP (Apache + PHP + MySQL)
+- **Versioning :** Git + GitHub
 
-## 🛠️ Tech Stack
+### Environnement de production
+- **Hébergeur :** Hostinger.com
+- **Site :** iris4pro.com
+- **Synchronisation :** SFTP automatique via VS Code
 
-- **Frontend**: WordPress, JavaScript, CSS (Héritier font)
-- **Backend**: PHP, MySQL
-- **Processing**: Python + extractiris + Photoshop API (planned)
-- **Payments**: SureCart integration
+### Extensions VS Code utilisées
+- PHP Extension Pack
+- Python (extension officielle Microsoft)
+- Live Server
+- GitLens
+- SFTP (Natizyskunk)
 
-## 📚 Documentation
+## 📁 Structure du projet
 
-See `/docs/` folder for complete documentation and setup guides.
+```
+Iris_Process_Tokens/
+├── .vscode/
+│   └── sftp.json              # Configuration SFTP (exclu de Git)
+├── plugins/
+│   └── image-processor-tokens/
+│       ├── image-processor-tokens.php  # Fichier principal du plugin
+│       ├── includes/          # Fonctions et classes
+│       ├── admin/            # Interface d'administration
+│       ├── assets/           # CSS, JS, images
+│       └── languages/        # Fichiers de traduction
+├── .gitignore               # Fichiers exclus de Git
+└── README.md               # Ce fichier
+```
 
-## 👤 Author
+## 🚀 Installation et configuration
 
-**Ikomiris** - Image processing specialist
+### Prérequis
+- WordPress 5.0+
+- PHP 7.4+
+- Environnement de développement configuré
 
-## 📄 License
+### Installation
+1. Cloner le repository
+2. Configurer les identifiants SFTP dans `.vscode/sftp.json`
+3. Synchroniser avec le serveur de production
+4. Activer le plugin dans WordPress Admin
 
-GPL v2 or later
+## 🔄 Workflow de développement
+
+1. **Développement local :** Modification des fichiers dans VS Code
+2. **Synchronisation automatique :** Upload SFTP vers Hostinger
+3. **Test en production :** Test direct sur iris4pro.com
+4. **Versioning :** Commit et push vers GitHub
+
+## 🔐 Sécurité
+
+- Fichier `.vscode/sftp.json` exclu de Git (contient les identifiants)
+- Validation et échappement de toutes les entrées utilisateur
+- Utilisation des API WordPress sécurisées
+
+## 🤖 Assistance IA
+
+Ce projet est développé avec l'assistance de Claude.ai pour :
+- Génération de code PHP WordPress
+- Résolution de problèmes techniques
+- Optimisation des performances
+- Respect des bonnes pratiques WordPress
+
+## 📝 Notes de développement
+
+- Synchronisation SFTP configurée vers `/wp-content/plugins/image-processor-tokens/`
+- Tests effectués directement sur l'environnement de production
+- Sauvegarde automatique sur GitHub après chaque session de développement
+
+## 👥 Contributeurs
+
+- **Développeur principal :** Emmanuel
+- **Assistant IA :** Claude.ai (Anthropic)
+
+## 📞 Support
+
+Pour toute question ou problème, consulter la documentation WordPress ou utiliser Claude.ai pour l'assistance technique.
+
+---
+
+*Dernière mise à jour : 17 juin 2025*

@@ -1,393 +1,229 @@
 <?php
 /**
  * Plugin Name: Iris Process - Image Processor with Tokens
- * Descriptions : Application WordPress de traitement d'images avec système de jetons et intégration SureCart
+ * Plugin URI: https://iris4pro.com
+ * Description: Application WordPress de traitement d'images avec système de jetons et intégration SureCart. Permet le traitement d'images RAW via API Python avec gestion complète des tokens utilisateur.
  * Version: 1.0.6
  * Author: Ikomiris
+ * Author URI: https://iris4pro.com
+ * License: GPL v2 or later
+ * License URI: https://www.gnu.org/licenses/gpl-2.0.html
+ * Text Domain: iris-process-tokens
+ * Domain Path: /languages
+ * Requires at least: 5.0
+ * Tested up to: 6.5
+ * Requires PHP: 7.4
+ * Network: false
+ * 
+ * @package IrisProcessTokens
+ * @version 1.0.6
+ * @author Ikomiris
+ * @copyright 2025 iris4pro.com
+ * 
+ * Développé avec l'assistance de Claude.ai (Anthropic)
+ * Environnement de développement : VS Code + SFTP + GitHub
+ * Serveur de production : Hostinger.com
  */
 
 // Sécurité - Empêcher l'accès direct
 if (!defined('ABSPATH')) {
-    exit;
+    exit('Accès direct interdit.');
 }
 
-// Configuration API Python
+/**
+ * Définition des constantes du plugin
+ * 
+ * @since 1.0.0
+ */
+define('IRIS_PLUGIN_VERSION', '1.0.6');
+define('IRIS_PLUGIN_URL', plugin_dir_url(__FILE__));
+define('IRIS_PLUGIN_PATH', plugin_dir_path(__FILE__));
 define('IRIS_API_URL', 'http://54.155.119.226:8000');
 
-// Activation du plugin
-register_activation_hook(__FILE__, 'iris_process_activate');
-
-function iris_process_activate() {{
-    "name": "Iris4Pro-Hostinger",
-    "host": "178.16.128.218",
-    "protocol": "ftp",
-    "port": 21,
-    "username": "u319690172.iris4pro.com",
-    "password": "votre-mot-de-passe",
-    "remotePath": "/public_html/wp-content/plugins",
-    "localPath": "./",
-    "uploadOnSave": true,
-    "syncMode": "update",
-    "secure": false,
-    "passive": true
+/**
+ * Classe principale du plugin Iris Process
+ * 
+ * Gère l'initialisation du plugin, les hooks WordPress,
+ * et coordonne tous les modules du système de traitement d'images.
+ * 
+ * @since 1.0.0
+ */
+class IrisProcessTokens {
+    
+    /**
+     * Instance unique de la classe (Singleton)
+     * 
+     * @since 1.0.0
+     * @var IrisProcessTokens|null
+     */
+    private static $instance = null;
+    
+    /**
+     * Constructeur privé pour le pattern Singleton
+     * 
+     * @since 1.0.0
+     */
+    private function __construct() {
+        $this->init_hooks();
+        $this->load_dependencies();
+    }
+    
+    /**
+     * Récupère l'instance unique de la classe
+     * 
+     * @since 1.0.0
+     * @return IrisProcessTokens
+     */
+    public static function get_instance() {
+        if (null === self::$instance) {
+            self::$instance = new self();
+        }
+        return self::$instance;
+    }
+    
+    /**
+     * Initialise les hooks WordPress
+     * 
+     * @since 1.0.0
+     * @return void
+     */
+    private function init_hooks() {
+        // Hooks d'activation et de désactivation
+        register_activation_hook(__FILE__, array($this, 'activate'));
+        register_deactivation_hook(__FILE__, 'iris_process_deactivate');
+        
+        // Hooks d'initialisation
+        add_action('init', array($this, 'plugin_init'));
+        add_action('plugins_loaded', 'iris_maybe_update_database');
+        
+        // Scripts et styles
+        add_action('wp_enqueue_scripts', 'iris_enqueue_upload_scripts');
+        add_action('admin_enqueue_scripts', 'iris_admin_enqueue_scripts');
+        
+        // AJAX handlers
+        add_action('wp_ajax_iris_upload_image', 'iris_handle_image_upload');
+        add_action('wp_ajax_nopriv_iris_upload_image', 'iris_handle_image_upload');
+        add_action('wp_ajax_iris_check_process_status', 'iris_check_process_status');
+        add_action('wp_ajax_iris_download', 'iris_handle_download');
+        add_action('wp_ajax_iris_test_api', 'iris_ajax_test_api');
+        
+        // REST API
+        add_action('rest_api_init', 'iris_register_rest_routes');
+        
+        // Administration
+        add_action('admin_menu', 'iris_add_admin_menu');
+        add_action('wp_dashboard_setup', 'iris_add_dashboard_widget');
+        
+        // Capacités et rôles
+        add_action('init', 'iris_add_custom_capabilities');
+        
+        // Nettoyage automatique
+        add_action('iris_daily_cleanup', 'iris_cleanup_old_jobs');
+        
+        // Intégration SureCart
+        add_action('surecart/order_completed', 'iris_handle_surecart_order', 10, 1);
+        add_action('iris_job_completed', 'iris_send_completion_email', 10, 3);
+        
+        // Log d'initialisation
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            iris_log_error('Plugin Iris Process initialisé - Version ' . IRIS_PLUGIN_VERSION);
+        }
+    }
+    
+    /**
+     * Charge les dépendances du plugin
+     * 
+     * @since 1.0.0
+     * @return void
+     */
+    private function load_dependencies() {
+        // Initialiser les classes principales
+        if (class_exists('Token_Manager')) {
+            // Token_Manager déjà défini dans le code existant
+        }
+        
+        if (class_exists('SureCart_Integration')) {
+            SureCart_Integration::init();
+        }
+    }
+    
+    /**
+     * Actions lors de l'activation du plugin
+     * 
+     * @since 1.0.0
+     * @return void
+     */
+    public function activate() {
+        // Créer les tables de base de données
+        iris_create_tables();
+        
+        // Programmer le nettoyage automatique
+        if (!wp_next_scheduled('iris_daily_cleanup')) {
+            wp_schedule_event(time(), 'daily', 'iris_daily_cleanup');
+        }
+        
+        // Vider le cache des règles de réécriture
+        flush_rewrite_rules();
+        
+        // Définir la version de la base de données
+        update_option('iris_process_db_version', IRIS_PLUGIN_VERSION);
+        
+        // Log d'activation
+        iris_log_error('Plugin Iris Process activé - Version ' . IRIS_PLUGIN_VERSION);
+    }
+    
+    /**
+     * Initialisation du plugin après le chargement de WordPress
+     * 
+     * @since 1.0.0
+     * @return void
+     */
+    public function plugin_init() {
+        // Chargement des traductions
+        load_plugin_textdomain(
+            'iris-process-tokens',
+            false,
+            dirname(plugin_basename(__FILE__)) . '/languages'
+        );
+        
+        // Initialisation des modules
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            iris_log_error('Iris Process: Plugin init hook exécuté');
+        }
+    }
 }
+
+// Initialiser le plugin
+IrisProcessTokens::get_instance();
+
+/**
+ * Fonction helper pour récupérer l'instance du plugin
+ * 
+ * @since 1.0.0
+ * @return IrisProcessTokens
+ */
+function iris_process_tokens() {
+    return IrisProcessTokens::get_instance();
+}
+
+/**
+ * Activation du plugin
+ * 
+ * @since 1.0.0
+ */
+function iris_process_activate() {
     iris_create_tables();
     flush_rewrite_rules();
 }
 
 /**
  * Création des tables de base de données
+ * 
+ * @since 1.0.0
+ * @return void
  */
 function iris_create_tables() {
     global $wpdb;
-    $table_name = $wpdb->prefix . 'iris_token_transactions';
-    
-    $transactions = $wpdb->get_results($wpdb->prepare(
-        "SELECT * FROM $table_name WHERE user_id = %d ORDER BY created_at DESC LIMIT %d",
-        $user_id, $limit
-    ));
-    
-    if (empty($transactions)) {
-        return '<p>Aucune transaction trouvée.</p>';
-    }
-    
-    $output = '<div class="iris-token-history">';
-    foreach ($transactions as $transaction) {
-        $type_class = $transaction->transaction_type === 'purchase' ? 'purchase' : 'usage';
-        $sign = $transaction->tokens_amount > 0 ? '+' : '';
-        
-        $output .= '<div class="iris-transaction-item iris-' . $type_class . '">';
-        $output .= '<span class="iris-transaction-amount">' . $sign . $transaction->tokens_amount . '</span>';
-        $output .= '<span class="iris-transaction-desc">' . esc_html($transaction->description) . '</span>';
-        $output .= '<span class="iris-transaction-date">' . date('d/m/Y', strtotime($transaction->created_at)) . '</span>';
-        $output .= '</div>';
-    }
-    $output .= '</div>';
-    
-    return $output;
-}
-
-// Nettoyage automatique
-function iris_cleanup_old_jobs() {
-    global $wpdb;
-    
-    // Supprimer les jobs de plus de 30 jours
-    $wpdb->query($wpdb->prepare(
-        "DELETE FROM {$wpdb->prefix}iris_processing_jobs 
-         WHERE created_at < DATE_SUB(NOW(), INTERVAL %d DAY)",
-        30
-    ));
-    
-    // Nettoyer les fichiers temporaires
-    $upload_dir = wp_upload_dir();
-    $iris_dir = $upload_dir['basedir'] . '/iris-process/';
-    
-    if (is_dir($iris_dir)) {
-        $files = glob($iris_dir . '*');
-        $now = time();
-        
-        foreach ($files as $file) {
-            if (is_file($file) && ($now - filemtime($file)) > (7 * 24 * 3600)) { // 7 jours
-                unlink($file);
-            }
-        }
-    }
-}
-
-// Programmer le nettoyage quotidien
-if (!wp_next_scheduled('iris_daily_cleanup')) {
-    wp_schedule_event(time(), 'daily', 'iris_daily_cleanup');
-}
-add_action('iris_daily_cleanup', 'iris_cleanup_old_jobs');
-
-// Fonction pour ajouter des jetons à un utilisateur (utilitaire admin)
-function iris_admin_add_tokens_to_user($user_id, $amount, $description = 'Attribution manuelle') {
-    if (!current_user_can('manage_options')) {
-        return false;
-    }
-    
-    return Token_Manager::add_tokens($user_id, $amount, null);
-}
-
-// Hook pour ajouter des jetons lors d'un achat SureCart (exemple)
-add_action('surecart/order_completed', 'iris_handle_surecart_order', 10, 1);
-
-function iris_handle_surecart_order($order) {
-    // Exemple d'intégration SureCart
-    // À adapter selon votre configuration SureCart
-    
-    $user_id = $order->customer->user_id ?? null;
-    $product_id = $order->line_items[0]->price->product ?? null;
-    
-    if (!$user_id || !$product_id) {
-        return;
-    }
-    
-    // Configuration des produits et jetons
-    $token_products = array(
-        'prod_token_10' => 10,   // 10 jetons
-        'prod_token_50' => 50,   // 50 jetons
-        'prod_token_100' => 100, // 100 jetons
-    );
-    
-    if (isset($token_products[$product_id])) {
-        $tokens_to_add = $token_products[$product_id];
-        Token_Manager::add_tokens($user_id, $tokens_to_add, $order->id);
-        
-        // Log de l'attribution
-        error_log("Iris Process: $tokens_to_add jetons ajoutés à l'utilisateur $user_id via commande {$order->id}");
-    }
-}
-
-// Ajouter des capacités personnalisées
-function iris_add_custom_capabilities() {
-    $role = get_role('administrator');
-    if ($role) {
-        $role->add_cap('iris_manage_tokens');
-        $role->add_cap('iris_view_all_jobs');
-    }
-    
-    $role = get_role('editor');
-    if ($role) {
-        $role->add_cap('iris_process_images');
-    }
-    
-    $role = get_role('subscriber');
-    if ($role) {
-        $role->add_cap('iris_process_images');
-    }
-}
-add_action('init', 'iris_add_custom_capabilities');
-
-// Fonction utilitaire pour vérifier si un utilisateur peut traiter des images
-function iris_user_can_process_images($user_id = null) {
-    if (!$user_id) {
-        $user_id = get_current_user_id();
-    }
-    
-    if (!$user_id) {
-        return false;
-    }
-    
-    return user_can($user_id, 'iris_process_images') && Token_Manager::get_user_balance($user_id) > 0;
-}
-
-// Widget WordPress pour afficher les jetons dans le dashboard
-function iris_dashboard_widget() {
-    if (!current_user_can('iris_process_images')) {
-        return;
-    }
-    
-    $user_id = get_current_user_id();
-    $balance = Token_Manager::get_user_balance($user_id);
-    
-    echo '<div class="iris-dashboard-widget">';
-    echo '<h3>Vos jetons Iris Process</h3>';
-    echo '<p class="iris-token-count">' . $balance . ' jeton' . ($balance > 1 ? 's' : '') . ' disponible' . ($balance > 1 ? 's' : '') . '</p>';
-    
-    if ($balance > 0) {
-        echo '<p><a href="' . home_url('/traitement-images/') . '" class="button button-primary">Traiter une image</a></p>';
-    } else {
-        echo '<p><a href="' . home_url('/boutique/') . '" class="button">Acheter des jetons</a></p>';
-    }
-    echo '</div>';
-    
-    echo '<style>
-    .iris-dashboard-widget .iris-token-count {
-        font-size: 1.5em;
-        font-weight: bold;
-        color: #3de9f4;
-        text-align: center;
-        margin: 15px 0;
-    }
-    </style>';
-}
-
-// Ajouter le widget au dashboard
-function iris_add_dashboard_widget() {
-    wp_add_dashboard_widget(
-        'iris_tokens_widget',
-        'Iris Process - Jetons',
-        'iris_dashboard_widget'
-    );
-}
-add_action('wp_dashboard_setup', 'iris_add_dashboard_widget');
-
-// Notifications par email pour les traitements terminés
-function iris_send_completion_email($user_id, $job_id, $status) {
-    if (!get_option('iris_email_notifications', true)) {
-        return;
-    }
-    
-    $user = get_user_by('id', $user_id);
-    if (!$user) {
-        return;
-    }
-    
-    $subject = 'Iris Process - Traitement terminé';
-    $message = "Bonjour {$user->display_name},\n\n";
-    
-    if ($status === 'completed') {
-        $message .= "Votre traitement d'image (Job: {$job_id}) a été terminé avec succès !\n\n";
-        $message .= "Vous pouvez télécharger vos fichiers depuis votre espace membre.\n\n";
-    } else {
-        $message .= "Votre traitement d'image (Job: {$job_id}) a rencontré une erreur.\n\n";
-        $message .= "Veuillez réessayer ou contacter le support si le problème persiste.\n\n";
-    }
-    
-    $message .= "Cordialement,\nL'équipe Iris Process";
-    
-    wp_mail($user->user_email, $subject, $message);
-}
-
-// Hook pour envoyer l'email lors du callback
-add_action('iris_job_completed', 'iris_send_completion_email', 10, 3);
-
-// Fonction pour déclencher l'action lors du callback
-function iris_trigger_job_completion_hooks($job_id, $status, $user_id) {
-    do_action('iris_job_completed', $user_id, $job_id, $status);
-}
-
-// API REST pour les statistiques (pour l'admin)
-add_action('rest_api_init', function() {
-    register_rest_route('iris/v1', '/stats', array(
-        'methods' => 'GET',
-        'callback' => 'iris_get_stats_api',
-        'permission_callback' => function() {
-            return current_user_can('manage_options');
-        }
-    ));
-});
-
-function iris_get_stats_api() {
-    global $wpdb;
-    
-    $table_tokens = $wpdb->prefix . 'iris_user_tokens';
-    $table_jobs = $wpdb->prefix . 'iris_processing_jobs';
-    
-    $stats = array(
-        'total_users' => $wpdb->get_var("SELECT COUNT(*) FROM $table_tokens"),
-        'total_jobs' => $wpdb->get_var("SELECT COUNT(*) FROM $table_jobs"),
-        'completed_jobs' => $wpdb->get_var("SELECT COUNT(*) FROM $table_jobs WHERE status = 'completed'"),
-        'pending_jobs' => $wpdb->get_var("SELECT COUNT(*) FROM $table_jobs WHERE status IN ('pending', 'processing')"),
-        'failed_jobs' => $wpdb->get_var("SELECT COUNT(*) FROM $table_jobs WHERE status = 'failed'"),
-        'total_tokens_purchased' => $wpdb->get_var("SELECT SUM(total_purchased) FROM $table_tokens"),
-        'total_tokens_used' => $wpdb->get_var("SELECT SUM(total_used) FROM $table_tokens"),
-        'api_url' => IRIS_API_URL
-    );
-    
-    return rest_ensure_response($stats);
-}
-
-// Fonction pour tester la connexion API (utilitaire)
-function iris_test_api_connection() {
-    $response = wp_remote_get(IRIS_API_URL . '/health', array(
-        'timeout' => 10,
-        'sslverify' => false
-    ));
-    
-    if (is_wp_error($response)) {
-        return array(
-            'success' => false,
-            'message' => $response->get_error_message()
-        );
-    }
-    
-    $code = wp_remote_retrieve_response_code($response);
-    if ($code === 200) {
-        $body = json_decode(wp_remote_retrieve_body($response), true);
-        return array(
-            'success' => true,
-            'message' => 'API accessible',
-            'data' => $body
-        );
-    } else {
-        return array(
-            'success' => false,
-            'message' => "Erreur HTTP: $code"
-        );
-    }
-}
-
-// Ajout d'un endpoint pour vérifier l'état de l'API
-add_action('wp_ajax_iris_test_api', 'iris_ajax_test_api');
-
-function iris_ajax_test_api() {
-    if (!current_user_can('manage_options')) {
-        wp_send_json_error('Permission insuffisante');
-    }
-    
-    $result = iris_test_api_connection();
-    
-    if ($result['success']) {
-        wp_send_json_success($result['message']);
-    } else {
-        wp_send_json_error($result['message']);
-    }
-}
-
-// Fonction pour nettoyer manuellement les anciens jobs (utilitaire admin)
-function iris_manual_cleanup() {
-    if (!current_user_can('manage_options')) {
-        return false;
-    }
-    
-    iris_cleanup_old_jobs();
-    return true;
-}
-
-// Log des erreurs spécifique à Iris Process
-function iris_log_error($message, $context = array()) {
-    $log_message = '[Iris Process] ' . $message;
-    if (!empty($context)) {
-        $log_message .= ' | Context: ' . json_encode($context);
-    }
-    error_log($log_message);
-}
-
-// Fonction pour débugger les uploads (mode développement)
-function iris_debug_upload($data) {
-    if (defined('WP_DEBUG') && WP_DEBUG) {
-        iris_log_error('Debug Upload', $data);
-    }
-}
-
-// Hook de désactivation du plugin
-register_deactivation_hook(__FILE__, 'iris_process_deactivate');
-
-function iris_process_deactivate() {
-    // Nettoyer les tâches cron
-    wp_clear_scheduled_hook('iris_daily_cleanup');
-    
-    // Log de désactivation
-    iris_log_error('Plugin Iris Process désactivé');
-}
-
-// Mise à jour de la base de données si nécessaire
-function iris_maybe_update_database() {
-    $current_version = get_option('iris_process_db_version', '1.0.0');
-    $plugin_version = '1.0.6';
-    
-    if (version_compare($current_version, $plugin_version, '<')) {
-        iris_create_tables();
-        update_option('iris_process_db_version', $plugin_version);
-        iris_log_error("Base de données mise à jour vers la version $plugin_version");
-    }
-}
-add_action('plugins_loaded', 'iris_maybe_update_database');
-
-// CSS et JS admin personnalisés
-function iris_admin_enqueue_scripts($hook) {
-    if (strpos($hook, 'iris') === false) {
-        return;
-    }
-    
-    wp_enqueue_style('iris-admin', plugin_dir_url(__FILE__) . 'assets/iris-admin.css', array(), '1.0.6');
-    wp_enqueue_script('iris-admin', plugin_dir_url(__FILE__) . 'assets/iris-admin.js', array('jquery'), '1.0.6', true);
-}
-add_action('admin_enqueue_scripts', 'iris_admin_enqueue_scripts');
-
-?>
     
     $charset_collate = $wpdb->get_charset_collate();
     
@@ -465,11 +301,23 @@ add_action('admin_enqueue_scripts', 'iris_admin_enqueue_scripts');
 
 /**
  * Classe de gestion des jetons
+ * 
+ * Gère toutes les opérations liées aux jetons utilisateur :
+ * - Consultation des soldes
+ * - Ajout de jetons (achats)
+ * - Utilisation de jetons (traitements)
+ * - Historique des transactions
+ * 
+ * @since 1.0.0
  */
 class Token_Manager {
     
     /**
      * Obtenir le solde de jetons d'un utilisateur
+     * 
+     * @since 1.0.0
+     * @param int $user_id ID de l'utilisateur
+     * @return int Nombre de jetons disponibles
      */
     public static function get_user_balance($user_id) {
         global $wpdb;
@@ -485,6 +333,12 @@ class Token_Manager {
     
     /**
      * Ajouter des jetons à un utilisateur
+     * 
+     * @since 1.0.0
+     * @param int $user_id ID de l'utilisateur
+     * @param int $amount Nombre de jetons à ajouter
+     * @param string|null $order_id ID de la commande (optionnel)
+     * @return bool Succès de l'opération
      */
     public static function add_tokens($user_id, $amount, $order_id = null) {
         global $wpdb;
@@ -518,7 +372,12 @@ class Token_Manager {
     }
     
     /**
-     * Utiliser un jeton
+     * Utiliser un jeton pour un traitement
+     * 
+     * @since 1.0.0
+     * @param int $user_id ID de l'utilisateur
+     * @param int $image_process_id ID du traitement d'image
+     * @return bool Succès de l'opération
      */
     public static function use_token($user_id, $image_process_id) {
         global $wpdb;
@@ -558,13 +417,30 @@ class Token_Manager {
 
 /**
  * Intégration SureCart
+ * 
+ * Gère l'intégration avec SureCart pour l'attribution automatique
+ * de jetons lors des achats et la gestion des remboursements.
+ * 
+ * @since 1.0.0
  */
 class SureCart_Integration {
     
+    /**
+     * Initialise l'intégration SureCart
+     * 
+     * @since 1.0.0
+     * @return void
+     */
     public static function init() {
         add_action('init', array(__CLASS__, 'handle_webhook'));
     }
     
+    /**
+     * Gère les webhooks SureCart
+     * 
+     * @since 1.0.0
+     * @return void
+     */
     public static function handle_webhook() {
         if ($_SERVER['REQUEST_URI'] === '/webhook/surecart' && $_SERVER['REQUEST_METHOD'] === 'POST') {
             $input = file_get_contents('php://input');
@@ -586,12 +462,26 @@ class SureCart_Integration {
         }
     }
     
+    /**
+     * Traite une commande terminée
+     * 
+     * @since 1.0.0
+     * @param array $data Données de la commande
+     * @return void
+     */
     private static function handle_order_completed($data) {
         // Logique d'attribution des jetons selon le produit acheté
         $products = get_option('iris_process_products', array());
         // À implémenter selon votre structure SureCart
     }
     
+    /**
+     * Traite un remboursement de commande
+     * 
+     * @since 1.0.0
+     * @param array $data Données du remboursement
+     * @return void
+     */
     private static function handle_order_refunded($data) {
         // Logique de déduction des jetons en cas de remboursement
     }
@@ -600,24 +490,18 @@ class SureCart_Integration {
 // Initialisation de l'intégration SureCart
 SureCart_Integration::init();
 
-// Hooks WordPress
-add_action('wp_enqueue_scripts', 'iris_enqueue_upload_scripts');
-add_action('wp_ajax_iris_upload_image', 'iris_handle_image_upload');
-add_action('wp_ajax_nopriv_iris_upload_image', 'iris_handle_image_upload');
-add_action('wp_ajax_iris_check_process_status', 'iris_check_process_status');
-add_action('wp_ajax_iris_download', 'iris_handle_download');
-add_action('rest_api_init', 'iris_register_rest_routes');
-add_action('admin_menu', 'iris_add_admin_menu');
-
 /**
  * Enqueue des scripts et styles pour l'upload
+ * 
+ * @since 1.0.0
+ * @return void
  */
 function iris_enqueue_upload_scripts() {
     // S'assurer que jQuery est chargé
     wp_enqueue_script('jquery');
     
     // Charger le CSS seulement
-    wp_enqueue_style('iris-upload', plugin_dir_url(__FILE__) . 'assets/iris-upload.css', array(), '1.0.6');
+    wp_enqueue_style('iris-upload', IRIS_PLUGIN_URL . 'assets/iris-upload.css', array(), IRIS_PLUGIN_VERSION);
     
     // Variables JavaScript pour AJAX
     wp_localize_script('jquery', 'iris_ajax', array(
@@ -629,7 +513,26 @@ function iris_enqueue_upload_scripts() {
 }
 
 /**
- * Endpoints REST API
+ * Enqueue des scripts et styles pour l'administration
+ * 
+ * @since 1.0.0
+ * @param string $hook_suffix Le suffixe de la page courante
+ * @return void
+ */
+function iris_admin_enqueue_scripts($hook) {
+    if (strpos($hook, 'iris') === false) {
+        return;
+    }
+    
+    wp_enqueue_style('iris-admin', IRIS_PLUGIN_URL . 'assets/iris-admin.css', array(), IRIS_PLUGIN_VERSION);
+    wp_enqueue_script('iris-admin', IRIS_PLUGIN_URL . 'assets/iris-admin.js', array('jquery'), IRIS_PLUGIN_VERSION, true);
+}
+
+/**
+ * Enregistrement des endpoints REST API
+ * 
+ * @since 1.0.0
+ * @return void
  */
 function iris_register_rest_routes() {
     register_rest_route('iris/v1', '/callback', array(
@@ -643,10 +546,22 @@ function iris_register_rest_routes() {
         'callback' => 'iris_get_job_status_api',
         'permission_callback' => '__return_true'
     ));
+    
+    register_rest_route('iris/v1', '/stats', array(
+        'methods' => 'GET',
+        'callback' => 'iris_get_stats_api',
+        'permission_callback' => function() {
+            return current_user_can('manage_options');
+        }
+    ));
 }
 
 /**
  * Callback depuis l'API Python
+ * 
+ * @since 1.0.0
+ * @param WP_REST_Request $request Requête REST
+ * @return WP_REST_Response|WP_Error Réponse ou erreur
  */
 function iris_handle_api_callback($request) {
     global $wpdb;
@@ -677,12 +592,15 @@ function iris_handle_api_callback($request) {
         // Décompter un jeton pour l'utilisateur
         Token_Manager::use_token($user_id, 0);
         
+        // Déclencher les hooks de completion
+        iris_trigger_job_completion_hooks($job_id, $status, $user_id);
+        
         // Log d'activité
-        error_log("Iris Process: Job $job_id terminé pour utilisateur $user_id");
+        iris_log_error("Job $job_id terminé pour utilisateur $user_id");
         
     } elseif ($status === 'failed') {
         $update_data['error_message'] = isset($data['error']) ? sanitize_text_field($data['error']) : 'Erreur inconnue';
-        error_log("Iris Process: Job $job_id échoué - " . $update_data['error_message']);
+        iris_log_error("Job $job_id échoué - " . $update_data['error_message']);
     }
     
     $wpdb->update(
@@ -698,6 +616,10 @@ function iris_handle_api_callback($request) {
 
 /**
  * Statut d'un job via API REST
+ * 
+ * @since 1.0.0
+ * @param WP_REST_Request $request Requête REST
+ * @return WP_REST_Response|WP_Error Réponse ou erreur
  */
 function iris_get_job_status_api($request) {
     global $wpdb;
@@ -724,7 +646,36 @@ function iris_get_job_status_api($request) {
 }
 
 /**
+ * API REST pour les statistiques (pour l'admin)
+ * 
+ * @since 1.0.0
+ * @return WP_REST_Response Réponse avec les statistiques
+ */
+function iris_get_stats_api() {
+    global $wpdb;
+    
+    $table_tokens = $wpdb->prefix . 'iris_user_tokens';
+    $table_jobs = $wpdb->prefix . 'iris_processing_jobs';
+    
+    $stats = array(
+        'total_users' => $wpdb->get_var("SELECT COUNT(*) FROM $table_tokens"),
+        'total_jobs' => $wpdb->get_var("SELECT COUNT(*) FROM $table_jobs"),
+        'completed_jobs' => $wpdb->get_var("SELECT COUNT(*) FROM $table_jobs WHERE status = 'completed'"),
+        'pending_jobs' => $wpdb->get_var("SELECT COUNT(*) FROM $table_jobs WHERE status IN ('pending', 'processing')"),
+        'failed_jobs' => $wpdb->get_var("SELECT COUNT(*) FROM $table_jobs WHERE status = 'failed'"),
+        'total_tokens_purchased' => $wpdb->get_var("SELECT SUM(total_purchased) FROM $table_tokens"),
+        'total_tokens_used' => $wpdb->get_var("SELECT SUM(total_used) FROM $table_tokens"),
+        'api_url' => IRIS_API_URL
+    );
+    
+    return rest_ensure_response($stats);
+}
+
+/**
  * Gestionnaire d'upload d'images
+ * 
+ * @since 1.0.0
+ * @return void
  */
 function iris_handle_image_upload() {
     // Vérification du nonce
@@ -795,6 +746,12 @@ function iris_handle_image_upload() {
 
 /**
  * Envoi vers l'API Python
+ * 
+ * @since 1.0.0
+ * @param string $file_path Chemin du fichier
+ * @param int $user_id ID de l'utilisateur
+ * @param int $process_id ID du processus
+ * @return array|WP_Error Résultat de l'API ou erreur
  */
 function iris_send_to_python_api($file_path, $user_id, $process_id) {
     global $wpdb;
@@ -865,7 +822,7 @@ function iris_send_to_python_api($file_path, $user_id, $process_id) {
             array('%s', '%d', '%s', '%s', '%s', '%s')
         );
         
-        error_log("Iris Process: Job $job_id créé pour utilisateur $user_id");
+        iris_log_error("Job $job_id créé pour utilisateur $user_id");
         
         return array(
             'success' => true,
@@ -874,13 +831,19 @@ function iris_send_to_python_api($file_path, $user_id, $process_id) {
         );
         
     } catch (Exception $e) {
-        error_log('Iris API Error: ' . $e->getMessage());
+        iris_log_error('Iris API Error: ' . $e->getMessage());
         return new WP_Error('api_error', 'Erreur API: ' . $e->getMessage());
     }
 }
 
 /**
  * Création d'un enregistrement de traitement
+ * 
+ * @since 1.0.0
+ * @param int $user_id ID de l'utilisateur
+ * @param string $file_name Nom du fichier
+ * @param string $file_path Chemin du fichier
+ * @return int ID de l'enregistrement créé
  */
 function iris_create_process_record($user_id, $file_name, $file_path) {
     global $wpdb;
@@ -905,6 +868,9 @@ function iris_create_process_record($user_id, $file_name, $file_path) {
 
 /**
  * Vérification du statut d'un traitement
+ * 
+ * @since 1.0.0
+ * @return void
  */
 function iris_check_process_status() {
     if (!wp_verify_nonce($_POST['nonce'], 'iris_upload_nonce')) {
@@ -940,6 +906,10 @@ function iris_check_process_status() {
 
 /**
  * Shortcode de la zone d'upload - VERSION AVEC INPUT VISIBLE
+ * 
+ * @since 1.0.0
+ * @param array $atts Attributs du shortcode
+ * @return string HTML de la zone d'upload
  */
 function iris_upload_zone_shortcode($atts) {
     if (!is_user_logged_in()) {
@@ -1011,7 +981,25 @@ function iris_upload_zone_shortcode($atts) {
         </div>
     </div>
     
-    <style>
+    <?php
+    // Styles CSS intégrés
+    echo iris_get_upload_styles();
+    
+    // JavaScript intégré
+    echo iris_get_upload_scripts();
+    
+    return ob_get_clean();
+}
+add_shortcode('iris_upload_zone', 'iris_upload_zone_shortcode');
+
+/**
+ * Styles CSS pour la zone d'upload
+ * 
+ * @since 1.0.0
+ * @return string CSS complet
+ */
+function iris_get_upload_styles() {
+    return '<style>
     .iris-login-required {
         background: #0C2D39;
         color: #F4F4F2;
@@ -1019,7 +1007,7 @@ function iris_upload_zone_shortcode($atts) {
         border-radius: 12px;
         text-align: center;
         border: none;
-        font-family: 'Lato', sans-serif;
+        font-family: "Lato", sans-serif;
     }
     
     .iris-login-required h3 {
@@ -1050,7 +1038,6 @@ function iris_upload_zone_shortcode($atts) {
         text-decoration: none;
     }
     
-    /* NOUVEAU CSS POUR INPUT VISIBLE */
     .iris-file-input-styled {
         position: absolute;
         top: 0;
@@ -1102,6 +1089,28 @@ function iris_upload_zone_shortcode($atts) {
         color: #F4F4F2;
         margin: 5px 0;
         font-size: 14px;
+    }
+    
+    #iris-file-preview {
+        background: #0C2D39;
+        border-radius: 8px;
+        padding: 15px;
+        margin: 20px 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .iris-file-info {
+        color: #F4F4F2;
+        display: flex;
+        gap: 15px;
+        align-items: center;
+    }
+    
+    #iris-file-name {
+        font-weight: bold;
+        color: #3de9f4;
     }
     
     #iris-file-size {
@@ -1186,7 +1195,6 @@ function iris_upload_zone_shortcode($atts) {
         margin: 5px 0;
     }
     
-    /* Historique */
     #iris-process-history {
         background: #0C2D39;
         color: #F4F4F2;
@@ -1257,7 +1265,6 @@ function iris_upload_zone_shortcode($atts) {
         color: #0C2D39;
     }
     
-    /* Responsive */
     @media (max-width: 768px) {
         #iris-upload-container {
             padding: 10px;
@@ -1273,58 +1280,66 @@ function iris_upload_zone_shortcode($atts) {
             gap: 10px;
         }
     }
-    </style>
-    
-    <script type="text/javascript">
+    </style>';
+}
+
+/**
+ * JavaScript pour la zone d'upload
+ * 
+ * @since 1.0.0
+ * @return string JavaScript complet
+ */
+function iris_get_upload_scripts() {
+    return '<script type="text/javascript">
     jQuery(document).ready(function($) {
-        console.log('🚀 Iris Upload - Version input visible');
+        console.log("🚀 Iris Upload - Version input visible");
         
-        var dropZone = $('#iris-drop-zone');
-        var fileInput = $('#iris-file-input');
-        var filePreview = $('#iris-file-preview');
-        var fileName = $('#iris-file-name');
-        var fileSize = $('#iris-file-size');
-        var removeBtn = $('#iris-remove-file');
-        var uploadBtn = $('#iris-upload-btn');
-        var uploadForm = $('#iris-upload-form');
-        var result = $('#iris-upload-result');
+        var dropZone = $("#iris-drop-zone");
+        var fileInput = $("#iris-file-input");
+        var filePreview = $("#iris-file-preview");
+        var fileName = $("#iris-file-name");
+        var fileSize = $("#iris-file-size");
+        var removeBtn = $("#iris-remove-file");
+        var uploadBtn = $("#iris-upload-btn");
+        var uploadForm = $("#iris-upload-form");
+        var result = $("#iris-upload-result");
         
         var selectedFile = null;
         
-        console.log('Éléments:', {
+        console.log("Éléments:", {
             dropZone: dropZone.length,
             fileInput: fileInput.length
         });
         
         // Empêcher défaut navigateur
-        $(document).on('dragover drop', function(e) {
+        $(document).on("dragover drop", function(e) {
             e.preventDefault();
         });
         
         // INPUT CHANGE - Principal événement
-        fileInput.on('change', function() {
-            console.log('📂 Input change détecté !');
+        fileInput.on("change", function() {
+            console.log("📂 Input change détecté !");
             if (this.files && this.files.length > 0) {
                 handleFile(this.files[0]);
             }
         });
         
         // Drag & Drop sur la zone
-        dropZone.on('dragover dragenter', function(e) {
+        dropZone.on("dragover dragenter", function(e) {
             e.preventDefault();
-            $(this).css('background-color', 'rgba(240, 90, 40, 0.2)');
-            console.log('📁 Drag over');
+            $(this).css("background-color", "rgba(240, 90, 40, 0.2)");
+            console.log("📁 Drag over");
         });
         
-        dropZone.on('dragleave', function(e) {
+        dropZone.on("dragleave", function(e) {
             e.preventDefault();
-            $(this).css('background-color', 'rgba(60, 233, 244, 0.1)');
+            $(this).css("background-color", "rgba(60, 233, 244, 0.1)");
         });
         
-        dropZone.on('drop', function(e) {
+        dropZone.on("drop", function(e) {
             e.preventDefault();
-            $(this).css('background-color', 'rgba(60, 233, 244, 0.1)');
-            console.log('📥 Drop détecté');
+            $(this).css("background-color", "rgba(60, 233, 244, 0.1)");
+            console.log("📥 Drop détecté");
             
             var files = e.originalEvent.dataTransfer.files;
             if (files && files.length > 0) {
@@ -1334,13 +1349,13 @@ function iris_upload_zone_shortcode($atts) {
         
         // Traitement fichier
         function handleFile(file) {
-            console.log('🔍 Fichier:', file.name);
+            console.log("🔍 Fichier:", file.name);
             
-            var ext = file.name.split('.').pop().toLowerCase();
-            var allowed = ['jpg', 'jpeg', 'tif', 'tiff', 'cr3', 'nef', 'arw', 'raw', 'dng', 'orf', 'raf', 'rw2'];
+            var ext = file.name.split(".").pop().toLowerCase();
+            var allowed = ["jpg", "jpeg", "tif", "tiff", "cr3", "nef", "arw", "raw", "dng", "orf", "raf", "rw2"];
             
             if (allowed.indexOf(ext) === -1) {
-                alert('Format non supporté: ' + ext.toUpperCase());
+                alert("Format non supporté: " + ext.toUpperCase());
                 return;
             }
             
@@ -1348,109 +1363,111 @@ function iris_upload_zone_shortcode($atts) {
             fileName.text(file.name);
             fileSize.text(formatSize(file.size));
             filePreview.show();
-            uploadBtn.prop('disabled', false);
+            uploadBtn.prop("disabled", false);
             
-            dropZone.css('background-color', 'rgba(40, 167, 69, 0.2)');
-            console.log('✅ Fichier accepté');
+            dropZone.css("background-color", "rgba(40, 167, 69, 0.2)");
+            console.log("✅ Fichier accepté");
         }
         
         // Supprimer fichier
-        removeBtn.on('click', function(e) {
+        removeBtn.on("click", function(e) {
             e.preventDefault();
             selectedFile = null;
-            fileInput.val('');
+            fileInput.val("");
             filePreview.hide();
-            uploadBtn.prop('disabled', true);
-            dropZone.css('background-color', 'rgba(60, 233, 244, 0.1)');
-            console.log('🗑️ Fichier supprimé');
+            uploadBtn.prop("disabled", true);
+            dropZone.css("background-color", "rgba(60, 233, 244, 0.1)");
+            console.log("🗑️ Fichier supprimé");
         });
         
         // Submit formulaire
-        uploadForm.on('submit', function(e) {
+        uploadForm.on("submit", function(e) {
             e.preventDefault();
             
             if (!selectedFile) {
-                alert('Sélectionnez un fichier');
+                alert("Sélectionnez un fichier");
                 return;
             }
             
-            console.log('🚀 Upload:', selectedFile.name);
+            console.log("🚀 Upload:", selectedFile.name);
             
-            var originalText = uploadBtn.find('.iris-btn-text').text();
-            uploadBtn.prop('disabled', true);
-            uploadBtn.find('.iris-btn-text').hide();
-            uploadBtn.find('.iris-btn-loading').show();
+            var originalText = uploadBtn.find(".iris-btn-text").text();
+            uploadBtn.prop("disabled", true);
+            uploadBtn.find(".iris-btn-text").hide();
+            uploadBtn.find(".iris-btn-loading").show();
             
             var formData = new FormData();
-            formData.append('action', 'iris_upload_image');
-            formData.append('nonce', iris_ajax.nonce);
-            formData.append('image_file', selectedFile);
+            formData.append("action", "iris_upload_image");
+            formData.append("nonce", iris_ajax.nonce);
+            formData.append("image_file", selectedFile);
             
             $.ajax({
                 url: iris_ajax.ajax_url,
-                type: 'POST',
+                type: "POST",
                 data: formData,
                 processData: false,
                 contentType: false,
                 timeout: 120000,
                 success: function(resp) {
-                    console.log('📨 Réponse:', resp);
+                    console.log("📨 Réponse:", resp);
                     
                     if (resp && resp.success) {
-                        var successMsg = '<div style="background:#28a745;color:white;padding:15px;border-radius:8px;text-align:center;">';
-                        successMsg += '<h4>✅ ' + resp.data.message + '</h4>';
-                        successMsg += '<p>Jetons restants: ' + resp.data.remaining_tokens + '</p>';
-                        successMsg += '<p>Job ID: ' + resp.data.job_id + '</p>';
-                        successMsg += '</div>';
+                        var successMsg = "<div style=\"background:#28a745;color:white;padding:15px;border-radius:8px;text-align:center;\">";
+                        successMsg += "<h4>✅ " + resp.data.message + "</h4>";
+                        successMsg += "<p>Jetons restants: " + resp.data.remaining_tokens + "</p>";
+                        successMsg += "<p>Job ID: " + resp.data.job_id + "</p>";
+                        successMsg += "</div>";
                         
                         result.html(successMsg).show();
-                        $('#token-balance').text(resp.data.remaining_tokens);
+                        $("#token-balance").text(resp.data.remaining_tokens);
                         removeBtn.click();
                         
                         setTimeout(function() {
                             location.reload();
                         }, 3000);
                     } else {
-                        var errorMsg = '<div style="background:#dc3545;color:white;padding:15px;border-radius:8px;text-align:center;">';
-                        errorMsg += '<h4>❌ Erreur</h4>';
-                        errorMsg += '<p>' + (resp.data || 'Erreur inconnue') + '</p>';
-                        errorMsg += '</div>';
+                        var errorMsg = "<div style=\"background:#dc3545;color:white;padding:15px;border-radius:8px;text-align:center;\">";
+                        errorMsg += "<h4>❌ Erreur</h4>";
+                        errorMsg += "<p>" + (resp.data || "Erreur inconnue") + "</p>";
+                        errorMsg += "</div>";
                         result.html(errorMsg).show();
                     }
                 },
                 error: function(xhr, status, error) {
-                    console.error('💥 Erreur:', status, error);
-                    var errorMsg = '<div style="background:#dc3545;color:white;padding:15px;border-radius:8px;text-align:center;">';
-                    errorMsg += '<h4>❌ Erreur de connexion</h4>';
-                    errorMsg += '<p>' + status + ': ' + error + '</p>';
-                    errorMsg += '</div>';
+                    console.error("💥 Erreur:", status, error);
+                    var errorMsg = "<div style=\"background:#dc3545;color:white;padding:15px;border-radius:8px;text-align:center;\">";
+                    errorMsg += "<h4>❌ Erreur de connexion</h4>";
+                    errorMsg += "<p>" + status + ": " + error + "</p>";
+                    errorMsg += "</div>";
                     result.html(errorMsg).show();
                 },
                 complete: function() {
-                    uploadBtn.prop('disabled', false);
-                    uploadBtn.find('.iris-btn-text').show().text(originalText);
-                    uploadBtn.find('.iris-btn-loading').hide();
+                    uploadBtn.prop("disabled", false);
+                    uploadBtn.find(".iris-btn-text").show().text(originalText);
+                    uploadBtn.find(".iris-btn-loading").hide();
                 }
             });
         });
         
         function formatSize(bytes) {
             if (bytes > 1048576) {
-                return Math.round(bytes / 1048576) + ' MB';
+                return Math.round(bytes / 1048576) + " MB";
             }
-            return Math.round(bytes / 1024) + ' KB';
+            return Math.round(bytes / 1024) + " KB";
         }
         
-        console.log('✅ Iris Upload initialisé !');
+        console.log("✅ Iris Upload initialisé !");
     });
-    </script>
-    <?php
-    return ob_get_clean();
+    </script>';
 }
-add_shortcode('iris_upload_zone', 'iris_upload_zone_shortcode');
 
 /**
  * Récupération de l'historique des traitements utilisateur
+ * 
+ * @since 1.0.0
+ * @param int $user_id ID de l'utilisateur
+ * @param int $limit Nombre maximum de résultats
+ * @return string HTML de l'historique
  */
 function iris_get_user_process_history($user_id, $limit = 10) {
     global $wpdb;
@@ -1498,6 +1515,10 @@ function iris_get_user_process_history($user_id, $limit = 10) {
 
 /**
  * Conversion du statut en texte lisible
+ * 
+ * @since 1.0.0
+ * @param string $status Statut du job
+ * @return string Texte lisible
  */
 function iris_get_status_text($status) {
     $statuses = array(
@@ -1512,6 +1533,9 @@ function iris_get_status_text($status) {
 
 /**
  * Gestionnaire de téléchargement sécurisé
+ * 
+ * @since 1.0.0
+ * @return void
  */
 function iris_handle_download() {
     $process_id = intval($_GET['process_id']);
@@ -1549,6 +1573,9 @@ function iris_handle_download() {
 
 /**
  * Pages d'administration
+ * 
+ * @since 1.0.0
+ * @return void
  */
 function iris_add_admin_menu() {
     add_menu_page(
@@ -1582,6 +1609,9 @@ function iris_add_admin_menu() {
 
 /**
  * Page d'administration principale
+ * 
+ * @since 1.0.0
+ * @return void
  */
 function iris_admin_page() {
     global $wpdb;
@@ -1682,7 +1712,41 @@ function iris_admin_page() {
             </div>
         </div>
         
-        <style>
+        <?php echo iris_get_admin_styles(); ?>
+        
+        <script>
+        jQuery(document).ready(function($) {
+            $('#test-api').on('click', function() {
+                var btn = $(this);
+                var result = $('#api-result');
+                
+                btn.prop('disabled', true).text('Test...');
+                
+                $.get('<?php echo IRIS_API_URL; ?>/health')
+                    .done(function(data) {
+                        result.html('<div style="color:green;padding:10px;">✅ API accessible - Status: ' + data.status + '</div>');
+                    })
+                    .fail(function() {
+                        result.html('<div style="color:red;padding:10px;">❌ API inaccessible</div>');
+                    })
+                    .always(function() {
+                        btn.prop('disabled', false).text('Tester l\'API');
+                    });
+            });
+        });
+        </script>
+    </div>
+    <?php
+}
+
+/**
+ * Styles CSS pour l'administration
+ * 
+ * @since 1.0.0
+ * @return string CSS pour l'admin
+ */
+function iris_get_admin_styles() {
+    return '<style>
         .iris-admin-stats {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -1760,35 +1824,14 @@ function iris_admin_page() {
             background: #124C58;
             color: white;
         }
-        </style>
-        
-        <script>
-        jQuery(document).ready(function($) {
-            $('#test-api').on('click', function() {
-                var btn = $(this);
-                var result = $('#api-result');
-                
-                btn.prop('disabled', true).text('Test...');
-                
-                $.get('<?php echo IRIS_API_URL; ?>/health')
-                    .done(function(data) {
-                        result.html('<div style="color:green;padding:10px;">✅ API accessible - Status: ' + data.status + '</div>');
-                    })
-                    .fail(function() {
-                        result.html('<div style="color:red;padding:10px;">❌ API inaccessible</div>');
-                    })
-                    .always(function() {
-                        btn.prop('disabled', false).text('Tester l\'API');
-                    });
-            });
-        });
-        </script>
-    </div>
-    <?php
+    </style>';
 }
 
 /**
  * Page des jobs
+ * 
+ * @since 1.0.0
+ * @return void
  */
 function iris_jobs_admin_page() {
     global $wpdb;
@@ -1840,6 +1883,9 @@ function iris_jobs_admin_page() {
 
 /**
  * Page de configuration
+ * 
+ * @since 1.0.0
+ * @return void
  */
 function iris_config_admin_page() {
     // Sauvegarde des paramètres
@@ -1897,12 +1943,70 @@ function iris_config_admin_page() {
     <?php
 }
 
-// Shortcodes
+/**
+ * Widget WordPress pour afficher les jetons dans le dashboard
+ * 
+ * @since 1.0.0
+ * @return void
+ */
+function iris_dashboard_widget() {
+    if (!current_user_can('iris_process_images')) {
+        return;
+    }
+    
+    $user_id = get_current_user_id();
+    $balance = Token_Manager::get_user_balance($user_id);
+    
+    echo '<div class="iris-dashboard-widget">';
+    echo '<h3>Vos jetons Iris Process</h3>';
+    echo '<p class="iris-token-count">' . $balance . ' jeton' . ($balance > 1 ? 's' : '') . ' disponible' . ($balance > 1 ? 's' : '') . '</p>';
+    
+    if ($balance > 0) {
+        echo '<p><a href="' . home_url('/traitement-images/') . '" class="button button-primary">Traiter une image</a></p>';
+    } else {
+        echo '<p><a href="' . home_url('/boutique/') . '" class="button">Acheter des jetons</a></p>';
+    }
+    echo '</div>';
+    
+    echo '<style>
+    .iris-dashboard-widget .iris-token-count {
+        font-size: 1.5em;
+        font-weight: bold;
+        color: #3de9f4;
+        text-align: center;
+        margin: 15px 0;
+    }
+    </style>';
+}
+
+/**
+ * Ajouter le widget au dashboard
+ * 
+ * @since 1.0.0
+ * @return void
+ */
+function iris_add_dashboard_widget() {
+    wp_add_dashboard_widget(
+        'iris_tokens_widget',
+        'Iris Process - Jetons',
+        'iris_dashboard_widget'
+    );
+}
+
+/**
+ * Shortcodes
+ * 
+ * @since 1.0.0
+ */
 add_shortcode('user_token_balance', 'iris_user_token_balance_shortcode');
 add_shortcode('token_history', 'iris_token_history_shortcode');
 
 /**
  * Shortcode pour afficher le solde de jetons
+ * 
+ * @since 1.0.0
+ * @param array $atts Attributs du shortcode
+ * @return string Solde de jetons
  */
 function iris_user_token_balance_shortcode($atts) {
     if (!is_user_logged_in()) {
@@ -1917,6 +2021,10 @@ function iris_user_token_balance_shortcode($atts) {
 
 /**
  * Shortcode pour l'historique des jetons
+ * 
+ * @since 1.0.0
+ * @param array $atts Attributs du shortcode
+ * @return string HTML de l'historique
  */
 function iris_token_history_shortcode($atts) {
     $atts = shortcode_atts(array(
@@ -1930,26 +2038,356 @@ function iris_token_history_shortcode($atts) {
     $user_id = get_current_user_id();
     $limit = intval($atts['limit']);
     
-    global $wpdb;-preview {
-        background: #0C2D39;
-        border-radius: 8px;
-        padding: 15px;
-        margin: 20px 0;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'iris_token_transactions';
+    
+    $transactions = $wpdb->get_results($wpdb->prepare(
+        "SELECT * FROM $table_name WHERE user_id = %d ORDER BY created_at DESC LIMIT %d",
+        $user_id, $limit
+    ));
+    
+    if (empty($transactions)) {
+        return '<p>Aucune transaction trouvée.</p>';
     }
     
-    .iris-file-info {
-        color: #F4F4F2;
-        display: flex;
-        gap: 15px;
-        align-items: center;
+    $output = '<div class="iris-token-history">';
+    foreach ($transactions as $transaction) {
+        $type_class = $transaction->transaction_type === 'purchase' ? 'purchase' : 'usage';
+        $sign = $transaction->tokens_amount > 0 ? '+' : '';
+        
+        $output .= '<div class="iris-transaction-item iris-' . $type_class . '">';
+        $output .= '<span class="iris-transaction-amount">' . $sign . $transaction->tokens_amount . '</span>';
+        $output .= '<span class="iris-transaction-desc">' . esc_html($transaction->description) . '</span>';
+        $output .= '<span class="iris-transaction-date">' . date('d/m/Y', strtotime($transaction->created_at)) . '</span>';
+        $output .= '</div>';
+    }
+    $output .= '</div>';
+    
+    return $output;
+}
+
+/**
+ * Fonctions utilitaires et helpers
+ * 
+ * @since 1.0.0
+ */
+
+/**
+ * Nettoyage automatique des anciens jobs
+ * 
+ * @since 1.0.0
+ * @return void
+ */
+function iris_cleanup_old_jobs() {
+    global $wpdb;
+    
+    // Supprimer les jobs de plus de 30 jours
+    $wpdb->query($wpdb->prepare(
+        "DELETE FROM {$wpdb->prefix}iris_processing_jobs 
+         WHERE created_at < DATE_SUB(NOW(), INTERVAL %d DAY)",
+        30
+    ));
+    
+    // Nettoyer les fichiers temporaires
+    $upload_dir = wp_upload_dir();
+    $iris_dir = $upload_dir['basedir'] . '/iris-process/';
+    
+    if (is_dir($iris_dir)) {
+        $files = glob($iris_dir . '*');
+        $now = time();
+        
+        foreach ($files as $file) {
+            if (is_file($file) && ($now - filemtime($file)) > (7 * 24 * 3600)) { // 7 jours
+                unlink($file);
+            }
+        }
+    }
+}
+
+/**
+ * Programmer le nettoyage quotidien
+ * 
+ * @since 1.0.0
+ */
+if (!wp_next_scheduled('iris_daily_cleanup')) {
+    wp_schedule_event(time(), 'daily', 'iris_daily_cleanup');
+}
+
+/**
+ * Fonction pour ajouter des jetons à un utilisateur (utilitaire admin)
+ * 
+ * @since 1.0.0
+ * @param int $user_id ID de l'utilisateur
+ * @param int $amount Nombre de jetons
+ * @param string $description Description de l'attribution
+ * @return bool Succès de l'opération
+ */
+function iris_admin_add_tokens_to_user($user_id, $amount, $description = 'Attribution manuelle') {
+    if (!current_user_can('manage_options')) {
+        return false;
     }
     
-    #iris-file-name {
-        font-weight: bold;
-        color: #3de9f4;
+    return Token_Manager::add_tokens($user_id, $amount, null);
+}
+
+/**
+ * Hook pour ajouter des jetons lors d'un achat SureCart
+ * 
+ * @since 1.0.0
+ * @param object $order Objet commande SureCart
+ * @return void
+ */
+function iris_handle_surecart_order($order) {
+    // Exemple d'intégration SureCart
+    // À adapter selon votre configuration SureCart
+    
+    $user_id = $order->customer->user_id ?? null;
+    $product_id = $order->line_items[0]->price->product ?? null;
+    
+    if (!$user_id || !$product_id) {
+        return;
     }
     
-    #iris-file
+    // Configuration des produits et jetons
+    $token_products = array(
+        'prod_token_10' => 10,   // 10 jetons
+        'prod_token_50' => 50,   // 50 jetons
+        'prod_token_100' => 100, // 100 jetons
+    );
+    
+    if (isset($token_products[$product_id])) {
+        $tokens_to_add = $token_products[$product_id];
+        Token_Manager::add_tokens($user_id, $tokens_to_add, $order->id);
+        
+        // Log de l'attribution
+        iris_log_error("$tokens_to_add jetons ajoutés à l'utilisateur $user_id via commande {$order->id}");
+    }
+}
+
+/**
+ * Ajouter des capacités personnalisées
+ * 
+ * @since 1.0.0
+ * @return void
+ */
+function iris_add_custom_capabilities() {
+    $role = get_role('administrator');
+    if ($role) {
+        $role->add_cap('iris_manage_tokens');
+        $role->add_cap('iris_view_all_jobs');
+    }
+    
+    $role = get_role('editor');
+    if ($role) {
+        $role->add_cap('iris_process_images');
+    }
+    
+    $role = get_role('subscriber');
+    if ($role) {
+        $role->add_cap('iris_process_images');
+    }
+}
+
+/**
+ * Fonction utilitaire pour vérifier si un utilisateur peut traiter des images
+ * 
+ * @since 1.0.0
+ * @param int|null $user_id ID de l'utilisateur (optionnel)
+ * @return bool L'utilisateur peut-il traiter des images
+ */
+function iris_user_can_process_images($user_id = null) {
+    if (!$user_id) {
+        $user_id = get_current_user_id();
+    }
+    
+    if (!$user_id) {
+        return false;
+    }
+    
+    return user_can($user_id, 'iris_process_images') && Token_Manager::get_user_balance($user_id) > 0;
+}
+
+/**
+ * Notifications par email pour les traitements terminés
+ * 
+ * @since 1.0.0
+ * @param int $user_id ID de l'utilisateur
+ * @param string $job_id ID du job
+ * @param string $status Statut du traitement
+ * @return void
+ */
+function iris_send_completion_email($user_id, $job_id, $status) {
+    if (!get_option('iris_email_notifications', true)) {
+        return;
+    }
+    
+    $user = get_user_by('id', $user_id);
+    if (!$user) {
+        return;
+    }
+    
+    $subject = 'Iris Process - Traitement terminé';
+    $message = "Bonjour {$user->display_name},\n\n";
+    
+    if ($status === 'completed') {
+        $message .= "Votre traitement d'image (Job: {$job_id}) a été terminé avec succès !\n\n";
+        $message .= "Vous pouvez télécharger vos fichiers depuis votre espace membre.\n\n";
+    } else {
+        $message .= "Votre traitement d'image (Job: {$job_id}) a rencontré une erreur.\n\n";
+        $message .= "Veuillez réessayer ou contacter le support si le problème persiste.\n\n";
+    }
+    
+    $message .= "Cordialement,\nL'équipe Iris Process";
+    
+    wp_mail($user->user_email, $subject, $message);
+}
+
+/**
+ * Fonction pour déclencher l'action lors du callback
+ * 
+ * @since 1.0.0
+ * @param string $job_id ID du job
+ * @param string $status Statut du job
+ * @param int $user_id ID de l'utilisateur
+ * @return void
+ */
+function iris_trigger_job_completion_hooks($job_id, $status, $user_id) {
+    do_action('iris_job_completed', $user_id, $job_id, $status);
+}
+
+/**
+ * Fonction pour tester la connexion API (utilitaire)
+ * 
+ * @since 1.0.0
+ * @return array Résultat du test
+ */
+function iris_test_api_connection() {
+    $response = wp_remote_get(IRIS_API_URL . '/health', array(
+        'timeout' => 10,
+        'sslverify' => false
+    ));
+    
+    if (is_wp_error($response)) {
+        return array(
+            'success' => false,
+            'message' => $response->get_error_message()
+        );
+    }
+    
+    $code = wp_remote_retrieve_response_code($response);
+    if ($code === 200) {
+        $body = json_decode(wp_remote_retrieve_body($response), true);
+        return array(
+            'success' => true,
+            'message' => 'API accessible',
+            'data' => $body
+        );
+    } else {
+        return array(
+            'success' => false,
+            'message' => "Erreur HTTP: $code"
+        );
+    }
+}
+
+/**
+ * Ajout d'un endpoint pour vérifier l'état de l'API
+ * 
+ * @since 1.0.0
+ * @return void
+ */
+function iris_ajax_test_api() {
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error('Permission insuffisante');
+    }
+    
+    $result = iris_test_api_connection();
+    
+    if ($result['success']) {
+        wp_send_json_success($result['message']);
+    } else {
+        wp_send_json_error($result['message']);
+    }
+}
+
+/**
+ * Fonction pour nettoyer manuellement les anciens jobs (utilitaire admin)
+ * 
+ * @since 1.0.0
+ * @return bool Succès de l'opération
+ */
+function iris_manual_cleanup() {
+    if (!current_user_can('manage_options')) {
+        return false;
+    }
+    
+    iris_cleanup_old_jobs();
+    return true;
+}
+
+/**
+ * Log des erreurs spécifique à Iris Process
+ * 
+ * @since 1.0.0
+ * @param string $message Message à logger
+ * @param array $context Contexte additionnel
+ * @return void
+ */
+function iris_log_error($message, $context = array()) {
+    $log_message = '[Iris Process] ' . $message;
+    if (!empty($context)) {
+        $log_message .= ' | Context: ' . json_encode($context);
+    }
+    error_log($log_message);
+}
+
+/**
+ * Fonction pour débugger les uploads (mode développement)
+ * 
+ * @since 1.0.0
+ * @param array $data Données à débugger
+ * @return void
+ */
+function iris_debug_upload($data) {
+    if (defined('WP_DEBUG') && WP_DEBUG) {
+        iris_log_error('Debug Upload', $data);
+    }
+}
+
+/**
+ * Hook de désactivation du plugin
+ * 
+ * @since 1.0.0
+ * @return void
+ */
+function iris_process_deactivate() {
+    // Nettoyer les tâches cron
+    wp_clear_scheduled_hook('iris_daily_cleanup');
+    
+    // Log de désactivation
+    iris_log_error('Plugin Iris Process désactivé');
+}
+
+/**
+ * Mise à jour de la base de données si nécessaire
+ * 
+ * @since 1.0.0
+ * @return void
+ */
+function iris_maybe_update_database() {
+    $current_version = get_option('iris_process_db_version', '1.0.0');
+    $plugin_version = IRIS_PLUGIN_VERSION;
+    
+    if (version_compare($current_version, $plugin_version, '<')) {
+        iris_create_tables();
+        update_option('iris_process_db_version', $plugin_version);
+        iris_log_error("Base de données mise à jour vers la version $plugin_version");
+    }
+}
+
+/**
+ * Fin du plugin
+ * 
+ * @since 1.0.0
+ */
+?>

@@ -41,6 +41,50 @@ define('IRIS_PLUGIN_PATH', plugin_dir_path(__FILE__));
 define('IRIS_API_URL', 'http://54.155.119.226:8000');
 
 /**
+ * Configuration des formats de fichiers supportés
+ * 
+ * @since 1.0.6
+ */
+define('IRIS_MAX_FILE_SIZE', 500 * 1024 * 1024); // 500 MB en bytes
+define('IRIS_ALLOWED_EXTENSIONS', array(
+    // Formats RAW
+    'cr2', 'cr3', 'crw',           // Canon
+    'nef', 'nrw',                 // Nikon
+    'arw', 'srf', 'sr2',          // Sony
+    'raw', 'rw2', 'rwl',          // Panasonic/Leica
+    'ptx', 'pef',                 // Pentax
+    'orf',                        // Olympus
+    'raf',                        // Fujifilm
+    'srw',                        // Samsung
+    'dng',                        // Adobe/Standard ouvert
+    // Formats d'images standards
+    'jpg', 'jpeg',                // JPEG
+    'tif', 'tiff',                // TIFF
+    'png',                        // PNG
+    'bmp',                        // Bitmap
+    'webp'                        // WebP
+));
+define('IRIS_ALLOWED_MIME_TYPES', array(
+    // RAW formats (détection basique)
+    'application/octet-stream',    // Format générique pour RAW
+    'image/x-canon-cr2',
+    'image/x-canon-cr3', 
+    'image/x-canon-crw',
+    'image/x-nikon-nef',
+    'image/x-sony-arw',
+    'image/x-panasonic-raw',
+    'image/x-olympus-orf',
+    'image/x-fuji-raf',
+    'image/x-adobe-dng',
+    // Formats standards
+    'image/jpeg',
+    'image/tiff',
+    'image/png',
+    'image/bmp',
+    'image/webp'
+));
+
+/**
  * Classe principale du plugin Iris Process
  * 
  * Gère l'initialisation du plugin, les hooks WordPress,
@@ -699,14 +743,27 @@ function iris_handle_image_upload() {
     }
     
     $file = $_FILES['image_file'];
-    $allowed_extensions = array('jpg', 'jpeg', 'tif', 'tiff', 'cr3', 'nef', 'arw', 'raw', 'dng', 'orf', 'raf', 'rw2');
-    
-    // Vérification de l'extension
-    $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-    
-    if (!in_array($extension, $allowed_extensions)) {
-        wp_send_json_error('Format de fichier non supporté. Formats acceptés : ' . implode(', ', $allowed_extensions));
+
+    // Vérification de la taille (500 MB max)
+    if ($file['size'] > IRIS_MAX_FILE_SIZE) {
+    wp_send_json_error('Fichier trop volumineux. Taille maximum : ' . size_format(IRIS_MAX_FILE_SIZE));
     }
+
+        // Vérification de l'extension
+$extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+
+    if (!in_array($extension, IRIS_ALLOWED_EXTENSIONS)) {
+    $allowed_display = array_map('strtoupper', IRIS_ALLOWED_EXTENSIONS);
+    wp_send_json_error('Format de fichier non supporté. Formats acceptés : ' . implode(', ', $allowed_display));
+    }
+
+    // Vérification basique du MIME type pour sécurité
+    $finfo = finfo_open(FILEINFO_MIME_TYPE);
+    $mime_type = finfo_file($finfo, $file['tmp_name']);
+    finfo_close($finfo);
+
+    // Log pour debug
+    iris_log_error("Upload - Fichier: {$file['name']}, Extension: $extension, MIME: $mime_type, Taille: " . size_format($file['size']));   
     
     // Création du répertoire d'upload spécifique
     $upload_dir = wp_upload_dir();
@@ -933,43 +990,55 @@ function iris_upload_zone_shortcode($atts) {
             <?php endif; ?>
         </div>
         
-        <div class="iris-upload-zone" <?php echo $token_balance < 1 ? 'style="opacity: 0.5; pointer-events: none;"' : ''; ?>>
-            <form id="iris-upload-form" enctype="multipart/form-data">
-                <div class="iris-drop-zone" id="iris-drop-zone">
-                    <div class="iris-drop-content">
-                        <div class="iris-upload-icon">
-                            <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <line x1="16" y1="52" x2="48" y2="52" stroke="#3de9f4" stroke-width="3" stroke-linecap="round"/>
-                                <path d="M32 12 L32 44" stroke="#3de9f4" stroke-width="3" stroke-linecap="round"/>
-                                <path d="M24 36 L32 44 L40 36" stroke="#3de9f4" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-                                <circle cx="32" cy="32" r="28" stroke="#3de9f4" stroke-width="1" opacity="0.2" fill="none"/>
-                            </svg>
-                        </div>
-                        <h4>Glissez votre image ici ou cliquez pour sélectionner</h4>
-                        <p>Formats supportés : CR3, NEF, ARW, RAW, DNG, ORF, RAF, RW2, JPG, TIF</p>
-                        <p>Taille maximum : <?php echo size_format(wp_max_upload_size()); ?></p>
-                        
-                        <!-- INPUT FILE VISIBLE MAIS TRANSPARENT -->
-                        <input type="file" id="iris-file-input" name="image_file" accept=".cr3,.nef,.arw,.jpg,.jpeg,.tif,.tiff,.raw,.dng,.orf,.raf,.rw2" class="iris-file-input-styled">
-                    </div>
+<div class="iris-upload-zone" <?php echo $token_balance < 1 ? 'style="opacity: 0.5; pointer-events: none;"' : ''; ?>>
+    <form id="iris-upload-form" enctype="multipart/form-data">
+        
+        <!-- ZONE DE DROP PRINCIPALE -->
+        <div class="iris-drop-zone-main" id="iris-drop-zone">
+            <div class="iris-drop-content">
+                <div class="iris-upload-icon">
+                    <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <line x1="16" y1="52" x2="48" y2="52" stroke="#3de9f4" stroke-width="3" stroke-linecap="round"/>
+                        <path d="M32 12 L32 44" stroke="#3de9f4" stroke-width="3" stroke-linecap="round"/>
+                        <path d="M24 36 L32 44 L40 36" stroke="#3de9f4" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                        <circle cx="32" cy="32" r="28" stroke="#3de9f4" stroke-width="1" opacity="0.2" fill="none"/>
+                    </svg>
                 </div>
-                
-                <div id="iris-file-preview" style="display: none;">
-                    <div class="iris-file-info">
-                        <span id="iris-file-name"></span>
-                        <span id="iris-file-size"></span>
-                        <button type="button" id="iris-remove-file">×</button>
-                    </div>
-                </div>
-                
-                <div class="iris-upload-actions">
-                    <button type="submit" id="iris-upload-btn" disabled>
-                        <span class="iris-btn-text">Traiter l'image (1 jeton)</span>
-                        <span class="iris-btn-loading" style="display: none;">⏳ Traitement en cours...</span>
-                    </button>
-                </div>
-            </form>
+                <h4>Glissez votre image ici</h4>
+                <p><strong>Formats RAW :</strong> CR2, CR3, CRW, NEF, NRW, ARW, SRF, SR2, RAW, RW2, RWL, PTX, PEF, ORF, RAF, SRW, DNG</p>
+                <p><strong>Formats standards :</strong> JPG, JPEG, TIF, TIFF, PNG, BMP, WEBP</p>
+                <p><strong>Taille maximum :</strong> <?php echo size_format(IRIS_MAX_FILE_SIZE); ?></p>
+            </div>
         </div>
+        
+        <!-- BOUTON DE SÉLECTION SÉPARÉ -->
+        <div class="iris-file-selector">
+            <label for="iris-file-input" class="iris-file-label">
+                📂 Ou cliquez ici pour sélectionner un fichier
+            </label>
+            <input type="file" 
+                   id="iris-file-input" 
+                   name="image_file" 
+                   accept=".cr2,.cr3,.crw,.nef,.nrw,.arw,.srf,.sr2,.raw,.rw2,.rwl,.ptx,.pef,.orf,.raf,.srw,.dng,.jpg,.jpeg,.tif,.tiff,.png,.bmp,.webp"
+                   style="display: none;">
+        </div>
+        
+        <div id="iris-file-preview" style="display: none;">
+            <div class="iris-file-info">
+                <span id="iris-file-name"></span>
+                <span id="iris-file-size"></span>
+                <button type="button" id="iris-remove-file">×</button>
+            </div>
+        </div>
+        
+        <div class="iris-upload-actions">
+            <button type="submit" id="iris-upload-btn" disabled>
+                <span class="iris-btn-text">Traiter l'image (1 jeton)</span>
+                <span class="iris-btn-loading" style="display: none;">⏳ Traitement en cours...</span>
+            </button>
+        </div>
+    </form>
+</div>
         
         <div id="iris-upload-result" style="display: none;"></div>
         
@@ -999,7 +1068,7 @@ add_shortcode('iris_upload_zone', 'iris_upload_zone_shortcode');
  * @return string CSS complet
  */
 function iris_get_upload_styles() {
-    return '<style>
+     return '<style>
     .iris-login-required {
         background: #0C2D39;
         color: #F4F4F2;
@@ -1009,6 +1078,86 @@ function iris_get_upload_styles() {
         border: none;
         font-family: "Lato", sans-serif;
     }
+
+    .iris-drop-zone-main {
+    border: 3px dashed #3de9f4;
+    border-radius: 12px;
+    padding: 40px 20px;
+    text-align: center;
+    transition: all 0.3s ease;
+    background: rgba(60, 233, 244, 0.1);
+    margin-bottom: 20px;
+}
+
+.iris-drop-zone-main:hover {
+    border-color: #F05A28;
+    background: rgba(240, 90, 40, 0.1);
+    transform: scale(1.02);
+}
+
+.iris-drop-content {
+    color: #F4F4F2;
+}
+
+.iris-file-selector {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.iris-file-label {
+    display: inline-block;
+    background: #3de9f4;
+    color: #0C2D39;
+    padding: 15px 30px;
+    border-radius: 25px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-transform: uppercase;
+    border: none;
+}
+
+.iris-file-label:hover {
+    background: #F05A28;
+    color: #F4F4F2;
+    transform: translateY(-2px);
+}
+
+#iris-file-input {
+    display: none !important;
+}
+
+    .iris-drop-zone {
+    position: relative;
+    border: 3px dashed #3de9f4;
+    border-radius: 12px;
+    padding: 40px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    background: rgba(60, 233, 244, 0.1);
+    overflow: hidden;
+    min-height: 200px;
+}
+
+.iris-drop-content {
+    position: relative;
+    z-index: 1;
+    pointer-events: none; /* IMPORTANT: Empêche les clics sur le contenu */
+    color: #F4F4F2;
+}
+
+#iris-file-input {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    opacity: 0 !important;
+    cursor: pointer !important;
+    z-index: 999 !important;
+}
     
     .iris-login-required h3 {
         color: #F4F4F2;
@@ -1039,14 +1188,14 @@ function iris_get_upload_styles() {
     }
     
     .iris-file-input-styled {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        opacity: 0;
-        cursor: pointer;
-        z-index: 10;
+        position: absolute !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        opacity: 0 !important;
+        cursor: pointer !important;
+        z-index: 999 !important;
         font-size: 0;
     }
     
@@ -1071,24 +1220,8 @@ function iris_get_upload_styles() {
     .iris-drop-content {
         position: relative;
         z-index: 1;
-        pointer-events: none;
+        /* SUPPRIMÉ pointer-events: none; */
         color: #F4F4F2;
-    }
-    
-    .iris-upload-icon {
-        margin-bottom: 20px;
-    }
-    
-    .iris-drop-content h4 {
-        color: #3de9f4;
-        font-size: 20px;
-        margin: 10px 0;
-    }
-    
-    .iris-drop-content p {
-        color: #F4F4F2;
-        margin: 5px 0;
-        font-size: 14px;
     }
     
     #iris-file-preview {
@@ -1292,7 +1425,7 @@ function iris_get_upload_styles() {
 function iris_get_upload_scripts() {
     return '<script type="text/javascript">
     jQuery(document).ready(function($) {
-        console.log("🚀 Iris Upload - Version input visible");
+        console.log("🚀 Iris Upload - Version corrigée");
         
         var dropZone = $("#iris-drop-zone");
         var fileInput = $("#iris-file-input");
@@ -1306,9 +1439,10 @@ function iris_get_upload_scripts() {
         
         var selectedFile = null;
         
-        console.log("Éléments:", {
+        console.log("Éléments trouvés:", {
             dropZone: dropZone.length,
-            fileInput: fileInput.length
+            fileInput: fileInput.length,
+            uploadBtn: uploadBtn.length
         });
         
         // Empêcher défaut navigateur
@@ -1316,7 +1450,7 @@ function iris_get_upload_scripts() {
             e.preventDefault();
         });
         
-        // INPUT CHANGE - Principal événement
+        // INPUT CHANGE
         fileInput.on("change", function() {
             console.log("📂 Input change détecté !");
             if (this.files && this.files.length > 0) {
@@ -1324,38 +1458,46 @@ function iris_get_upload_scripts() {
             }
         });
         
-        // Drag & Drop sur la zone
-        dropZone.on("dragover dragenter", function(e) {
-            e.preventDefault();
-            $(this).css("background-color", "rgba(240, 90, 40, 0.2)");
-            console.log("📁 Drag over");
-        });
-        
-        dropZone.on("dragleave", function(e) {
-            e.preventDefault();
-            $(this).css("background-color", "rgba(60, 233, 244, 0.1)");
-        });
-        
-        dropZone.on("drop", function(e) {
-            e.preventDefault();
-            $(this).css("background-color", "rgba(60, 233, 244, 0.1)");
-            console.log("📥 Drop détecté");
-            
-            var files = e.originalEvent.dataTransfer.files;
-            if (files && files.length > 0) {
-                handleFile(files[0]);
-            }
-        });
+dropZone.on("dragover dragenter", function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    $(this).css("background-color", "rgba(240, 90, 40, 0.2)");
+    console.log("📁 Drag over");
+});
+
+dropZone.on("dragleave", function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    $(this).css("background-color", "rgba(60, 233, 244, 0.1)");
+});
+
+dropZone.on("drop", function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    $(this).css("background-color", "rgba(60, 233, 244, 0.1)");
+    console.log("📥 Drop détecté");
+    
+    var files = e.originalEvent.dataTransfer.files;
+    if (files && files.length > 0) {
+        handleFile(files[0]);
+    }
+});
         
         // Traitement fichier
         function handleFile(file) {
-            console.log("🔍 Fichier:", file.name);
+            console.log("🔍 Fichier:", file.name, "Taille:", formatSize(file.size));
             
             var ext = file.name.split(".").pop().toLowerCase();
-            var allowed = ["jpg", "jpeg", "tif", "tiff", "cr3", "nef", "arw", "raw", "dng", "orf", "raf", "rw2"];
+            var allowed = ["cr2", "cr3", "crw", "nef", "nrw", "arw", "srf", "sr2", "raw", "rw2", "rwl", "ptx", "pef", "orf", "raf", "srw", "dng", "jpg", "jpeg", "tif", "tiff", "png", "bmp", "webp"];
             
             if (allowed.indexOf(ext) === -1) {
                 alert("Format non supporté: " + ext.toUpperCase());
+                return;
+            }
+            
+            var maxSize = 524288000;
+            if (file.size > maxSize) {
+                alert("Fichier trop volumineux: " + formatSize(file.size) + " (Max: 500 MB)");
                 return;
             }
             
@@ -1366,7 +1508,7 @@ function iris_get_upload_scripts() {
             uploadBtn.prop("disabled", false);
             
             dropZone.css("background-color", "rgba(40, 167, 69, 0.2)");
-            console.log("✅ Fichier accepté");
+            console.log("✅ Fichier accepté:", file.name);
         }
         
         // Supprimer fichier
@@ -1391,7 +1533,6 @@ function iris_get_upload_scripts() {
             
             console.log("🚀 Upload:", selectedFile.name);
             
-            var originalText = uploadBtn.find(".iris-btn-text").text();
             uploadBtn.prop("disabled", true);
             uploadBtn.find(".iris-btn-text").hide();
             uploadBtn.find(".iris-btn-loading").show();
@@ -1412,11 +1553,7 @@ function iris_get_upload_scripts() {
                     console.log("📨 Réponse:", resp);
                     
                     if (resp && resp.success) {
-                        var successMsg = "<div style=\"background:#28a745;color:white;padding:15px;border-radius:8px;text-align:center;\">";
-                        successMsg += "<h4>✅ " + resp.data.message + "</h4>";
-                        successMsg += "<p>Jetons restants: " + resp.data.remaining_tokens + "</p>";
-                        successMsg += "<p>Job ID: " + resp.data.job_id + "</p>";
-                        successMsg += "</div>";
+                        var successMsg = "<div style=\\"background:#28a745;color:white;padding:15px;border-radius:8px;text-align:center;\\"><h4>✅ " + resp.data.message + "</h4><p>Jetons restants: " + resp.data.remaining_tokens + "</p><p>Job ID: " + resp.data.job_id + "</p></div>";
                         
                         result.html(successMsg).show();
                         $("#token-balance").text(resp.data.remaining_tokens);
@@ -1426,24 +1563,18 @@ function iris_get_upload_scripts() {
                             location.reload();
                         }, 3000);
                     } else {
-                        var errorMsg = "<div style=\"background:#dc3545;color:white;padding:15px;border-radius:8px;text-align:center;\">";
-                        errorMsg += "<h4>❌ Erreur</h4>";
-                        errorMsg += "<p>" + (resp.data || "Erreur inconnue") + "</p>";
-                        errorMsg += "</div>";
+                        var errorMsg = "<div style=\\"background:#dc3545;color:white;padding:15px;border-radius:8px;text-align:center;\\"><h4>❌ Erreur</h4><p>" + (resp.data || "Erreur inconnue") + "</p></div>";
                         result.html(errorMsg).show();
                     }
                 },
                 error: function(xhr, status, error) {
                     console.error("💥 Erreur:", status, error);
-                    var errorMsg = "<div style=\"background:#dc3545;color:white;padding:15px;border-radius:8px;text-align:center;\">";
-                    errorMsg += "<h4>❌ Erreur de connexion</h4>";
-                    errorMsg += "<p>" + status + ": " + error + "</p>";
-                    errorMsg += "</div>";
+                    var errorMsg = "<div style=\\"background:#dc3545;color:white;padding:15px;border-radius:8px;text-align:center;\\"><h4>❌ Erreur de connexion</h4><p>" + status + ": " + error + "</p></div>";
                     result.html(errorMsg).show();
                 },
                 complete: function() {
                     uploadBtn.prop("disabled", false);
-                    uploadBtn.find(".iris-btn-text").show().text(originalText);
+                    uploadBtn.find(".iris-btn-text").show();
                     uploadBtn.find(".iris-btn-loading").hide();
                 }
             });
@@ -2390,4 +2521,40 @@ function iris_maybe_update_database() {
  * 
  * @since 1.0.0
  */
+/**
+ * Vérifier et ajuster les limites PHP pour les gros fichiers
+ * 
+ * @since 1.0.6
+ * @return void
+ */
+function iris_check_php_limits() {
+    $upload_max = wp_max_upload_size();
+    $required_size = IRIS_MAX_FILE_SIZE;
+    
+    if ($upload_max < $required_size) {
+        iris_log_error("Limite PHP insuffisante - Upload max: " . size_format($upload_max) . " / Requis: " . size_format($required_size));
+        
+        // Ajouter une notice admin
+        add_action('admin_notices', function() use ($upload_max, $required_size) {
+            echo '<div class="notice notice-warning"><p>';
+            echo '<strong>Iris Process:</strong> La limite d\'upload PHP (' . size_format($upload_max) . ') est inférieure à la limite requise (' . size_format($required_size) . '). ';
+            echo 'Contactez votre hébergeur pour augmenter upload_max_filesize et post_max_size.';
+            echo '</p></div>';
+        });
+    }
+}
+add_action('admin_init', 'iris_check_php_limits');
+
+/**
+ * Obtenir la liste des formats supportés (pour affichage)
+ * 
+ * @since 1.0.6
+ * @return string Liste formatée des extensions
+ */
+function iris_get_supported_formats_display() {
+    $raw_formats = array('CR2', 'CR3', 'CRW', 'NEF', 'NRW', 'ARW', 'SRF', 'SR2', 'RAW', 'RW2', 'RWL', 'PTX', 'PEF', 'ORF', 'RAF', 'SRW', 'DNG');
+    $standard_formats = array('JPG', 'JPEG', 'TIF', 'TIFF', 'PNG', 'BMP', 'WEBP');
+    
+    return 'RAW: ' . implode(', ', $raw_formats) . ' | Standards: ' . implode(', ', $standard_formats);
+}
 ?>

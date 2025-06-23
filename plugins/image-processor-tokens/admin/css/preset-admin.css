@@ -1,0 +1,127 @@
+/* Styles pour l'interface de gestion des presets */
+
+.iris-preset-upload .card,
+.iris-preset-settings .card {
+    margin-bottom: 20px;
+}
+
+.iris-upload-actions {
+    padding: 20px 0;
+    border-top: 1px solid #ddd;
+    margin-top: 20px;
+}
+
+.iris-progress-bar {
+    width: 100%;
+    height: 20px;
+    background: #f0f0f0;
+    border-radius: 10px;
+    overflow: hidden;
+    margin: 10px 0;
+}
+
+.iris-progress-fill {
+    height: 100%;
+    background: #0073aa;
+    width: 0%;
+    transition: width 0.3s;
+    animation: iris-progress 2s infinite;
+}
+
+@keyframes iris-progress {
+    0% { width: 0%; }
+    50% { width: 70%; }
+    100% { width: 100%; }
+}
+
+.preset-type {
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.preset-type-default {
+    background: #e1f5fe;
+    color: #0277bd;
+}
+
+.preset-type-uploaded {
+    background: #f3e5f5;
+    color: #7b1fa2;
+}
+
+.iris-test-results {
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 15px;
+    margin: 20px 0;
+}
+
+.iris-test-result {
+    padding: 8px 12px;
+    margin: 5px 0;
+    border-radius: 4px;
+}
+
+.iris-test-result.success {
+    background: #d4edda;
+    border: 1px solid #c3e6cb;
+    color: #155724;
+}
+
+.iris-test-result.error {
+    background: #f8d7da;
+    border: 1px solid #f5c6cb;
+    color: #721c24;
+}
+
+tr.testing {
+    opacity: 0.6;
+    background: linear-gradient(90deg, #f0f0f0 25%, transparent 25%);
+    animation: iris-row-loading 1s infinite;
+}
+
+@keyframes iris-row-loading {
+    0% { background-position: 0% 0%; }
+    100% { background-position: 100% 0%; }
+}
+
+.iris-help-card {
+    background: #f8f9fa;
+    border-left: 4px solid #0073aa;
+}
+
+.iris-help-card h3 {
+    color: #0073aa;
+}
+
+.iris-help-card pre {
+    background: #2d3748;
+    color: #e2e8f0;
+    padding: 15px;
+    border-radius: 5px;
+    overflow-x: auto;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.no-presets {
+    text-align: center;
+    padding: 40px 20px;
+    color: #666;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .iris-preset-list table {
+        font-size: 14px;
+    }
+    
+    .iris-preset-list .column-camera,
+    .iris-preset-list .column-date {
+        display: none;
+    }
+}

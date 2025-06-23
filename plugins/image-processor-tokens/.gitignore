@@ -1,3 +1,6 @@
+# IMPORTANT : Exclure les identifiants SFTP
+.vscode/sftp.json
+
 # WordPress
 wp-config.php
 wp-content/uploads/
@@ -5,7 +8,7 @@ wp-content/cache/
 wp-content/upgrade/
 
 # IDE
-.vscode/
+.vscode/settings.json
 .idea/
 *.swp
 *.swo

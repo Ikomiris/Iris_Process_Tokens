@@ -1,20 +1,50 @@
 <?php
+/**
+ * Dashboard utilisateur
+ * 
+ * @package IrisProcessTokens
+ * @since 1.0.0
+ */
+
 if (!defined('ABSPATH')) {
     exit;
 }
 
+/**
+ * Classe pour le dashboard utilisateur
+ * 
+ * @since 1.0.0
+ */
 class User_Dashboard {
     
+    /**
+     * Constructeur
+     * 
+     * @since 1.0.0
+     */
     public function __construct() {
         add_action('init', array($this, 'init'));
     }
     
+    /**
+     * Initialisation
+     * 
+     * @since 1.0.0
+     * @return void
+     */
     public function init() {
         add_shortcode('user_token_balance', array($this, 'display_token_balance'));
         add_shortcode('token_history', array($this, 'display_token_history'));
         add_shortcode('iris_process_page', array($this, 'display_process_page'));
     }
     
+    /**
+     * Afficher le solde de jetons
+     * 
+     * @since 1.0.0
+     * @param array $atts Attributs du shortcode
+     * @return string HTML du solde
+     */
     public function display_token_balance($atts) {
         if (!is_user_logged_in()) {
             return '<p>Vous devez être connecté pour voir votre solde.</p>';
@@ -44,6 +74,13 @@ class User_Dashboard {
         return ob_get_clean();
     }
     
+    /**
+     * Afficher l'historique des jetons
+     * 
+     * @since 1.0.0
+     * @param array $atts Attributs du shortcode
+     * @return string HTML de l'historique
+     */
     public function display_token_history($atts) {
         if (!is_user_logged_in()) {
             return '<p>Vous devez être connecté pour voir votre historique.</p>';
@@ -95,6 +132,13 @@ class User_Dashboard {
         return ob_get_clean();
     }
     
+    /**
+     * Afficher la page de traitement d'images
+     * 
+     * @since 1.0.0
+     * @param array $atts Attributs du shortcode
+     * @return string HTML de la page
+     */
     public function display_process_page($atts) {
         if (!is_user_logged_in()) {
             return '<p>Vous devez être connecté pour utiliser Iris Process.</p>';
@@ -110,6 +154,9 @@ class User_Dashboard {
             </div>';
         }
         
+        // Récupérer les presets disponibles
+        $available_presets = iris_list_available_presets();
+        
         ob_start();
         ?>
         <div class="iris-process-page">
@@ -118,13 +165,31 @@ class User_Dashboard {
                 Jetons disponibles : <strong><?php echo $balance; ?></strong>
             </div>
             
+            <!-- Sélection du preset (NOUVEAU v1.1.0) -->
+            <?php if (!empty($available_presets)): ?>
+            <div class="preset-selection">
+                <label for="iris-preset-select">🎨 Choisir un preset de traitement :</label>
+                <select id="iris-preset-select" name="preset_id">
+                    <option value="">Traitement par défaut</option>
+                    <?php foreach ($available_presets as $preset): ?>
+                        <option value="<?php echo esc_attr($preset->id); ?>" <?php echo $preset->is_default ? 'selected' : ''; ?>>
+                            <?php echo esc_html($preset->preset_name); ?>
+                            <?php if ($preset->is_default): ?>(Par défaut)<?php endif; ?>
+                            (<?php echo $preset->usage_count; ?> utilisations)
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+                <p class="description">Choisissez un preset pour appliquer des réglages spécifiques</p>
+            </div>
+            <?php endif; ?>
+            
             <form id="iris-upload-form" enctype="multipart/form-data">
                 <div class="upload-area">
-                    <input type="file" id="iris-image-input" name="image" accept=".cr3,.nef,.arw,.jpg,.jpeg,.tif,.tiff" required>
+                    <input type="file" id="iris-image-input" name="image" accept=".cr3,.nef,.arw,.jpg,.jpeg,.tif,.tiff,.raw,.dng,.orf,.raf,.rw2" required>
                     <label for="iris-image-input">
                         <div class="upload-placeholder">
                             <p>Cliquez pour sélectionner une image</p>
-                            <small>Formats acceptés : CR3, NEF, ARW, JPG, TIF</small>
+                            <small>Formats acceptés : CR3, NEF, ARW, JPG, TIF, RAW, DNG, ORF, RAF, RW2</small>
                         </div>
                     </label>
                 </div>
@@ -151,6 +216,7 @@ class User_Dashboard {
             max-width: 600px;
             margin: 0 auto;
             padding: 20px;
+            font-family: 'Lato', sans-serif;
         }
         
         .token-info-small {
@@ -159,6 +225,38 @@ class User_Dashboard {
             border-radius: 5px;
             margin-bottom: 20px;
             text-align: center;
+        }
+        
+        .preset-selection {
+            background: #0C2D39;
+            color: #F4F4F2;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        
+        .preset-selection label {
+            display: block;
+            margin-bottom: 10px;
+            color: #3de9f4;
+            font-weight: bold;
+        }
+        
+        .preset-selection select {
+            width: 100%;
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #124C58;
+            background: #15697B;
+            color: #F4F4F2;
+            margin-bottom: 5px;
+        }
+        
+        .preset-selection .description {
+            color: #ccc;
+            font-size: 13px;
+            margin: 0;
+            font-style: italic;
         }
         
         .upload-area {
@@ -220,6 +318,7 @@ class User_Dashboard {
             e.preventDefault();
             
             const fileInput = document.getElementById('iris-image-input');
+            const presetSelect = document.getElementById('iris-preset-select');
             const file = fileInput.files[0];
             
             if (!file) {
@@ -231,15 +330,60 @@ class User_Dashboard {
             document.getElementById('iris-progress').style.display = 'block';
             document.getElementById('iris-result').style.display = 'none';
             
-            // Simuler le traitement (à remplacer par l'appel API réel)
-            setTimeout(function() {
+            // Préparer les données du formulaire
+            const formData = new FormData();
+            formData.append('action', 'iris_upload_image');
+            formData.append('nonce', '<?php echo wp_create_nonce('iris_upload_nonce'); ?>');
+            formData.append('image_file', file);
+            
+            // Ajouter le preset sélectionné si disponible
+            if (presetSelect && presetSelect.value) {
+                formData.append('preset_id', presetSelect.value);
+            }
+            
+            // Envoyer via AJAX
+            fetch('<?php echo admin_url('admin-ajax.php'); ?>', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
                 document.getElementById('iris-progress').style.display = 'none';
-                document.getElementById('iris-result').innerHTML = '<p>Image traitée avec succès ! <a href="#" download>Télécharger</a></p>';
+                
+                if (data.success) {
+                    let resultHtml = '<div style="background:#28a745;color:white;padding:15px;border-radius:8px;">';
+                    resultHtml += '<h4>✅ ' + data.data.message + '</h4>';
+                    resultHtml += '<p>Jetons restants: ' + data.data.remaining_tokens + '</p>';
+                    if (data.data.preset_applied) {
+                        resultHtml += '<p>🎨 Preset appliqué avec succès</p>';
+                    }
+                    resultHtml += '</div>';
+                    
+                    document.getElementById('iris-result').innerHTML = resultHtml;
+                } else {
+                    document.getElementById('iris-result').innerHTML = 
+                        '<div style="background:#dc3545;color:white;padding:15px;border-radius:8px;">' +
+                        '<h4>❌ Erreur</h4><p>' + (data.data || 'Erreur inconnue') + '</p></div>';
+                }
+                
                 document.getElementById('iris-result').style.display = 'block';
-            }, 3000);
+                
+                // Recharger après 3 secondes
+                setTimeout(() => location.reload(), 3000);
+            })
+            .catch(error => {
+                document.getElementById('iris-progress').style.display = 'none';
+                document.getElementById('iris-result').innerHTML = 
+                    '<div style="background:#dc3545;color:white;padding:15px;border-radius:8px;">' +
+                    '<h4>❌ Erreur de connexion</h4><p>' + error.message + '</p></div>';
+                document.getElementById('iris-result').style.display = 'block';
+            });
         });
         </script>
         <?php
         return ob_get_clean();
     }
 }
+
+// Initialiser la classe
+new User_Dashboard();

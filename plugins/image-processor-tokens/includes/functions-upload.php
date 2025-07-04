@@ -4,6 +4,7 @@
  * 
  * @package IrisProcessTokens
  * @since 1.0.0
+ * @version 1.1.1
  */
 
 if (!defined('ABSPATH')) {
@@ -15,699 +16,516 @@ if (!defined('ABSPATH')) {
  * 
  * @since 1.0.0
  * @since 1.1.0 Ajout support presets JSON
+ * @since 1.1.1 Validation sécurisée renforcée
  * @return void
  */
 function iris_handle_image_upload() {
     // Vérification du nonce
-    if (!wp_verify_nonce($_POST['nonce'], 'iris_upload_nonce')) {
-        wp_die('Erreur de sécurité');
+    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'iris_upload_nonce')) {
+        wp_send_json_error('Erreur de sécurité - nonce invalide');
+        return;
     }
     
     $user_id = get_current_user_id();
     if (!$user_id) {
         wp_send_json_error('Utilisateur non connecté');
+        return;
     }
     
     // Vérification du solde de jetons
-    if (Token_Manager::get_user_balance($user_id) < 1) {
-        wp_send_json_error('Solde de jetons insuffisant');
+    if (!class_exists('Token_Manager')) {
+        wp_send_json_error('Gestionnaire de jetons non disponible');
+        return;
     }
     
-    // Récupération du preset sélectionné (NOUVEAU v1.1.0)
+    $current_balance = Token_Manager::get_user_balance($user_id);
+    if ($current_balance < 1) {
+        wp_send_json_error('Solde de jetons insuffisant. Solde actuel: ' . $current_balance);
+        return;
+    }
+    
+    // Récupération du preset sélectionné (v1.1.0)
     $preset_id = isset($_POST['preset_id']) ? intval($_POST['preset_id']) : null;
     
     // Vérification du fichier uploadé
     if (!isset($_FILES['image_file']) || $_FILES['image_file']['error'] !== UPLOAD_ERR_OK) {
-        wp_send_json_error('Erreur lors de l\'upload du fichier');
+        $error_messages = array(
+            UPLOAD_ERR_INI_SIZE => 'Fichier trop volumineux (limite serveur)',
+            UPLOAD_ERR_FORM_SIZE => 'Fichier trop volumineux (limite formulaire)',
+            UPLOAD_ERR_PARTIAL => 'Upload partiel',
+            UPLOAD_ERR_NO_FILE => 'Aucun fichier sélectionné',
+            UPLOAD_ERR_NO_TMP_DIR => 'Dossier temporaire manquant',
+            UPLOAD_ERR_CANT_WRITE => 'Erreur d\'écriture',
+            UPLOAD_ERR_EXTENSION => 'Extension bloquée'
+        );
+        
+        $error_code = $_FILES['image_file']['error'] ?? UPLOAD_ERR_NO_FILE;
+        $error_msg = $error_messages[$error_code] ?? 'Erreur d\'upload inconnue';
+        
+        wp_send_json_error('Erreur lors de l\'upload du fichier: ' . $error_msg);
+        return;
     }
     
     $file = $_FILES['image_file'];
-    $allowed_extensions = array('jpg', 'jpeg', 'tif', 'tiff', 'cr3', 'nef', 'arw', 'raw', 'dng', 'orf', 'raf', 'rw2');
+    
+    // Validation sécurisée du fichier
+    $validation_result = iris_validate_uploaded_file($file);
+    if (is_wp_error($validation_result)) {
+        wp_send_json_error($validation_result->get_error_message());
+        return;
+    }
+    
+    // Création du répertoire d'upload sécurisé
+    $upload_result = iris_create_secure_upload_directory();
+    if (is_wp_error($upload_result)) {
+        wp_send_json_error($upload_result->get_error_message());
+        return;
+    }
+    
+    $iris_dir = $upload_result['path'];
+    
+    // Génération d'un nom de fichier unique et sécurisé
+    $file_info = iris_generate_secure_filename($file, $user_id);
+    $file_path = $iris_dir . '/' . $file_info['filename'];
+    
+    // Déplacement du fichier de manière sécurisée
+    if (!move_uploaded_file($file['tmp_name'], $file_path)) {
+        wp_send_json_error('Erreur lors de la sauvegarde du fichier');
+        return;
+    }
+    
+    // Validation finale du fichier sauvegardé
+    $final_validation = iris_validate_saved_file($file_path);
+    if (is_wp_error($final_validation)) {
+        unlink($file_path); // Nettoyer le fichier défaillant
+        wp_send_json_error($final_validation->get_error_message());
+        return;
+    }
+    
+    // Création de l'enregistrement de traitement
+    $process_id = iris_create_process_record($user_id, $file['name'], $file_path);
+    if (!$process_id) {
+        unlink($file_path);
+        wp_send_json_error('Erreur lors de la création de l\'enregistrement');
+        return;
+    }
+    
+    // Envoi vers l'API Python avec preset (v1.1.0)
+    $api_result = iris_send_to_python_api($file_path, $user_id, $process_id, $preset_id);
+    
+    if (is_wp_error($api_result)) {
+        wp_send_json_error($api_result->get_error_message());
+        return;
+    }
+    
+    // Succès - réponse avec toutes les informations
+    wp_send_json_success(array(
+        'message' => 'Fichier uploadé avec succès ! Traitement en cours...',
+        'process_id' => $process_id,
+        'job_id' => $api_result['job_id'],
+        'file_name' => $file['name'],
+        'file_size' => size_format($file['size']),
+        'preset_applied' => $api_result['preset_applied'] ?? false,
+        'remaining_tokens' => Token_Manager::get_user_balance($user_id)
+    ));
+}
+
+/**
+ * Validation sécurisée d'un fichier uploadé
+ * 
+ * @since 1.1.1
+ * @param array $file Informations du fichier uploadé
+ * @return true|WP_Error Validation réussie ou erreur
+ */
+function iris_validate_uploaded_file($file) {
+    // Extensions autorisées
+    $allowed_extensions = array('jpg', 'jpeg', 'tif', 'tiff', 'cr3', 'cr2', 'nef', 'arw', 'raw', 'dng', 'orf', 'raf', 'rw2', 'png');
     
     // Vérification de l'extension
     $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-   
-   if (!in_array($extension, $allowed_extensions)) {
-       wp_send_json_error('Format de fichier non supporté. Formats acceptés : ' . implode(', ', $allowed_extensions));
-   }
-   
-   // Création du répertoire d'upload spécifique
-   $upload_dir = wp_upload_dir();
-   $iris_dir = $upload_dir['basedir'] . '/iris-process';
-   
-   if (!file_exists($iris_dir)) {
-       wp_mkdir_p($iris_dir);
-   }
-   
-   // Génération d'un nom de fichier unique
-   $file_name = uniqid('iris_' . $user_id . '_') . '.' . $extension;
-   $file_path = $iris_dir . '/' . $file_name;
-   
-   // Déplacement du fichier
-   if (move_uploaded_file($file['tmp_name'], $file_path)) {
-       // Création de l'enregistrement de traitement
-       $process_id = iris_create_process_record($user_id, $file_name, $file_path);
-       
-       // Envoi vers l'API Python avec preset (MODIFIÉ v1.1.0)
-       $api_result = iris_send_to_python_api($file_path, $user_id, $process_id, $preset_id);
-       
-       if (is_wp_error($api_result)) {
-           wp_send_json_error($api_result->get_error_message());
-       } else {
-           wp_send_json_success(array(
-               'message' => 'Fichier uploadé avec succès ! Traitement en cours...',
-               'process_id' => $process_id,
-               'job_id' => $api_result['job_id'],
-               'file_name' => $file_name,
-               'preset_applied' => $api_result['preset_applied'],
-               'remaining_tokens' => Token_Manager::get_user_balance($user_id)
-           ));
-       }
-   } else {
-       wp_send_json_error('Erreur lors de la sauvegarde du fichier');
-   }
+    if (!in_array($extension, $allowed_extensions)) {
+        return new WP_Error('invalid_extension', 'Format de fichier non supporté. Formats acceptés : ' . implode(', ', array_map('strtoupper', $allowed_extensions)));
+    }
+    
+    // Vérification de la taille
+    $max_size = wp_max_upload_size();
+    if ($file['size'] > $max_size) {
+        return new WP_Error('file_too_large', 'Fichier trop volumineux. Taille maximum : ' . size_format($max_size));
+    }
+    
+    // Vérification du nom de fichier (sécurité)
+    if (!iris_is_safe_filename($file['name'])) {
+        return new WP_Error('unsafe_filename', 'Nom de fichier non sécurisé. Utilisez uniquement des lettres, chiffres, tirets et points.');
+    }
+    
+    // Vérification MIME type (sécurité renforcée)
+    $allowed_mimes = array(
+        'image/jpeg',
+        'image/tiff',
+        'image/x-canon-cr3',
+        'image/x-canon-cr2', 
+        'image/x-nikon-nef',
+        'image/x-sony-arw',
+        'image/x-adobe-dng',
+        'image/x-olympus-orf',
+        'image/x-fuji-raf',
+        'image/x-panasonic-rw2',
+        'image/png',
+        'application/octet-stream' // Pour certains RAW
+    );
+    
+    $finfo = finfo_open(FILEINFO_MIME_TYPE);
+    if ($finfo) {
+        $mime_type = finfo_file($finfo, $file['tmp_name']);
+        finfo_close($finfo);
+        
+        if ($mime_type && !in_array($mime_type, $allowed_mimes)) {
+            // Log pour debug mais pas de blocage strict pour les RAW
+            iris_log_error("MIME type non standard détecté: {$mime_type} pour {$file['name']}");
+        }
+    }
+    
+    return true;
 }
 
 /**
-* Vérification du statut d'un traitement
-* 
-* @since 1.0.0
-* @return void
-*/
+ * Vérification de la sécurité d'un nom de fichier
+ * 
+ * @since 1.1.1
+ * @param string $filename Nom du fichier
+ * @return bool Fichier sûr
+ */
+function iris_is_safe_filename($filename) {
+    // Caractères autorisés : lettres, chiffres, tirets, underscores, points, espaces
+    $safe_pattern = '/^[a-zA-Z0-9._\-\s]+$/';
+    
+    // Vérifier le pattern
+    if (!preg_match($safe_pattern, $filename)) {
+        return false;
+    }
+    
+    // Vérifier qu'il n'y a pas de double extensions dangereuses
+    if (preg_match('/\.(php|phtml|php3|php4|php5|pl|py|jsp|asp|sh|cgi)(\.|$)/i', $filename)) {
+        return false;
+    }
+    
+    return true;
+}
+
+/**
+ * Création d'un répertoire d'upload sécurisé
+ * 
+ * @since 1.1.1
+ * @return array|WP_Error Informations du répertoire ou erreur
+ */
+function iris_create_secure_upload_directory() {
+    $upload_dir = wp_upload_dir();
+    
+    if ($upload_dir['error']) {
+        return new WP_Error('upload_dir_error', 'Erreur du répertoire d\'upload WordPress: ' . $upload_dir['error']);
+    }
+    
+    $iris_dir = $upload_dir['basedir'] . '/iris-process';
+    
+    // Créer le répertoire s'il n'existe pas
+    if (!file_exists($iris_dir)) {
+        if (!wp_mkdir_p($iris_dir)) {
+            return new WP_Error('mkdir_failed', 'Impossible de créer le répertoire iris-process');
+        }
+        
+        // Créer un fichier .htaccess pour la sécurité
+        $htaccess_content = "# Iris Process Security\n";
+        $htaccess_content .= "Options -Indexes\n";
+        $htaccess_content .= "Options -ExecCGI\n";
+        $htaccess_content .= "<Files \"*.php\">\n";
+        $htaccess_content .= "    Order allow,deny\n";
+        $htaccess_content .= "    Deny from all\n";
+        $htaccess_content .= "</Files>\n";
+        
+        file_put_contents($iris_dir . '/.htaccess', $htaccess_content);
+        
+        // Créer un index.php vide pour la sécurité
+        file_put_contents($iris_dir . '/index.php', '<?php // Silence is golden');
+    }
+    
+    // Vérifier les permissions
+    if (!is_writable($iris_dir)) {
+        return new WP_Error('not_writable', 'Le répertoire iris-process n\'est pas accessible en écriture');
+    }
+    
+    return array(
+        'path' => $iris_dir,
+        'url' => $upload_dir['baseurl'] . '/iris-process'
+    );
+}
+
+/**
+ * Génération d'un nom de fichier unique et sécurisé
+ * 
+ * @since 1.1.1
+ * @param array $file Informations du fichier
+ * @param int $user_id ID de l'utilisateur
+ * @return array Informations du fichier sécurisé
+ */
+function iris_generate_secure_filename($file, $user_id) {
+    $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    $base_name = pathinfo($file['name'], PATHINFO_FILENAME);
+    
+    // Nettoyer le nom de base
+    $safe_base = preg_replace('/[^a-zA-Z0-9._\-]/', '_', $base_name);
+    $safe_base = substr($safe_base, 0, 50); // Limiter la longueur
+    
+    // Générer un nom unique
+    $timestamp = time();
+    $random = wp_generate_password(8, false);
+    $unique_name = "iris_{$user_id}_{$timestamp}_{$random}_{$safe_base}.{$extension}";
+    
+    return array(
+        'filename' => $unique_name,
+        'original' => $file['name'],
+        'extension' => $extension,
+        'size' => $file['size']
+    );
+}
+
+/**
+ * Validation finale d'un fichier sauvegardé
+ * 
+ * @since 1.1.1
+ * @param string $file_path Chemin du fichier sauvegardé
+ * @return true|WP_Error Validation réussie ou erreur
+ */
+function iris_validate_saved_file($file_path) {
+    // Vérifier que le fichier existe
+    if (!file_exists($file_path)) {
+        return new WP_Error('file_not_saved', 'Le fichier n\'a pas été sauvegardé correctement');
+    }
+    
+    // Vérifier la taille
+    $file_size = filesize($file_path);
+    if ($file_size === false || $file_size === 0) {
+        return new WP_Error('empty_file', 'Le fichier sauvegardé est vide');
+    }
+    
+    // Vérifier que ce n'est pas un fichier PHP déguisé
+    $file_start = file_get_contents($file_path, false, null, 0, 10);
+    if (strpos($file_start, '<?php') === 0) {
+        return new WP_Error('php_file_detected', 'Fichier PHP détecté - upload refusé pour sécurité');
+    }
+    
+    return true;
+}
+
+/**
+ * Vérification du statut d'un traitement
+ * 
+ * @since 1.0.0
+ * @since 1.1.1 Validation sécurisée
+ * @return void
+ */
 function iris_check_process_status() {
-   if (!wp_verify_nonce($_POST['nonce'], 'iris_upload_nonce')) {
-       wp_die('Erreur de sécurité');
-   }
-   
-   $user_id = get_current_user_id();
-   if (!$user_id) {
-       wp_send_json_error('Utilisateur non connecté');
-   }
-   
-   $process_id = intval($_POST['process_id']);
-   
-   global $wpdb;
-   $table_name = $wpdb->prefix . 'iris_image_processes';
-   
-   $process = $wpdb->get_row($wpdb->prepare(
-       "SELECT * FROM $table_name WHERE id = %d AND user_id = %d",
-       $process_id, $user_id
-   ));
-   
-   if (!$process) {
-       wp_send_json_error('Traitement non trouvé');
-   }
-   
-   wp_send_json_success(array(
-       'status' => $process->status,
-       'process_id' => $process->id,
-       'created_at' => $process->created_at,
-       'updated_at' => $process->updated_at
-   ));
+    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'iris_upload_nonce')) {
+        wp_send_json_error('Erreur de sécurité');
+        return;
+    }
+    
+    $user_id = get_current_user_id();
+    if (!$user_id) {
+        wp_send_json_error('Utilisateur non connecté');
+        return;
+    }
+    
+    $process_id = isset($_POST['process_id']) ? intval($_POST['process_id']) : 0;
+    if ($process_id <= 0) {
+        wp_send_json_error('ID de processus invalide');
+        return;
+    }
+    
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'iris_image_processes';
+    
+    $process = $wpdb->get_row($wpdb->prepare(
+        "SELECT * FROM {$table_name} WHERE id = %d AND user_id = %d",
+        $process_id, 
+        $user_id
+    ));
+    
+    if (!$process) {
+        wp_send_json_error('Traitement non trouvé');
+        return;
+    }
+    
+    wp_send_json_success(array(
+        'status' => $process->status,
+        'process_id' => $process->id,
+        'original_filename' => $process->original_filename,
+        'created_at' => $process->created_at,
+        'updated_at' => $process->updated_at,
+        'processing_start_time' => $process->processing_start_time,
+        'processing_end_time' => $process->processing_end_time,
+        'error_message' => $process->error_message
+    ));
 }
 
 /**
-* Gestionnaire de téléchargement sécurisé
-* 
-* @since 1.0.0
-* @return void
-*/
+ * Gestionnaire de téléchargement sécurisé
+ * 
+ * @since 1.0.0
+ * @since 1.1.1 Sécurité renforcée
+ * @return void
+ */
 function iris_handle_download() {
-   $process_id = intval($_GET['process_id']);
-   $nonce = $_GET['nonce'];
-   
-   if (!wp_verify_nonce($nonce, 'iris_download_' . $process_id)) {
-       wp_die('Erreur de sécurité');
-   }
-   
-   $user_id = get_current_user_id();
-   if (!$user_id) {
-       wp_die('Utilisateur non connecté');
-   }
-   
-   global $wpdb;
-   $table_name = $wpdb->prefix . 'iris_image_processes';
-   
-   $process = $wpdb->get_row($wpdb->prepare(
-       "SELECT * FROM $table_name WHERE id = %d AND user_id = %d",
-       $process_id, $user_id
-   ));
-   
-   if (!$process || !file_exists($process->processed_file_path)) {
-       wp_die('Fichier non trouvé');
-   }
-   
-   // Téléchargement du fichier
-   header('Content-Type: application/octet-stream');
-   header('Content-Disposition: attachment; filename="processed_' . basename($process->original_filename) . '"');
-   header('Content-Length: ' . filesize($process->processed_file_path));
-   
-   readfile($process->processed_file_path);
-   exit;
+    $process_id = isset($_GET['process_id']) ? intval($_GET['process_id']) : 0;
+    $nonce = isset($_GET['nonce']) ? $_GET['nonce'] : '';
+    
+    if (!$process_id || !$nonce) {
+        wp_die('Paramètres manquants', 'Erreur de téléchargement', array('response' => 400));
+    }
+    
+    if (!wp_verify_nonce($nonce, 'iris_download_' . $process_id)) {
+        wp_die('Erreur de sécurité', 'Accès non autorisé', array('response' => 403));
+    }
+    
+    $user_id = get_current_user_id();
+    if (!$user_id) {
+        wp_die('Utilisateur non connecté', 'Connexion requise', array('response' => 401));
+    }
+    
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'iris_image_processes';
+    
+    $process = $wpdb->get_row($wpdb->prepare(
+        "SELECT * FROM {$table_name} WHERE id = %d AND user_id = %d",
+        $process_id, 
+        $user_id
+    ));
+    
+    if (!$process) {
+        wp_die('Traitement non trouvé', 'Fichier introuvable', array('response' => 404));
+    }
+    
+    if (!$process->processed_file_path || !file_exists($process->processed_file_path)) {
+        wp_die('Fichier traité non disponible', 'Fichier introuvable', array('response' => 404));
+    }
+    
+    // Vérification de sécurité supplémentaire
+    $upload_dir = wp_upload_dir();
+    $allowed_dir = $upload_dir['basedir'] . '/iris-process';
+    
+    if (strpos(realpath($process->processed_file_path), realpath($allowed_dir)) !== 0) {
+        wp_die('Accès non autorisé au fichier', 'Sécurité', array('response' => 403));
+    }
+    
+    // Préparation du téléchargement
+    $file_size = filesize($process->processed_file_path);
+    $file_name = 'iris_processed_' . basename($process->original_filename);
+    
+    // Headers pour le téléchargement
+    header('Content-Type: application/octet-stream');
+    header('Content-Disposition: attachment; filename="' . $file_name . '"');
+    header('Content-Length: ' . $file_size);
+    header('Cache-Control: must-revalidate');
+    header('Pragma: public');
+    
+    // Nettoyer le buffer de sortie
+    if (ob_get_level()) {
+        ob_end_clean();
+    }
+    
+    // Lire et envoyer le fichier par chunks pour éviter les problèmes de mémoire
+    $chunk_size = 8192;
+    $handle = fopen($process->processed_file_path, 'rb');
+    
+    if ($handle) {
+        while (!feof($handle)) {
+            echo fread($handle, $chunk_size);
+            flush();
+        }
+        fclose($handle);
+    }
+    
+    exit;
 }
 
 /**
-* Styles CSS pour la zone d'upload (MODIFIÉ v1.1.0)
-* 
-* @since 1.0.0
-* @since 1.1.0 Ajout styles pour sélection preset
-* @return string CSS complet
-*/
-function iris_get_upload_styles() {
-   return '<style>
-   .iris-login-required {
-       background: #0C2D39;
-       color: #F4F4F2;
-       padding: 40px;
-       border-radius: 12px;
-       text-align: center;
-       border: none;
-       font-family: "Lato", sans-serif;
-   }
-   
-   .iris-login-required h3 {
-       color: #F4F4F2;
-       font-size: 24px;
-       font-weight: 700;
-       margin-bottom: 16px;
-       text-transform: uppercase;
-   }
-   
-   .iris-login-btn {
-       display: inline-block;
-       background: #F05A28;
-       color: #F4F4F2;
-       padding: 12px 24px;
-       border-radius: 24px;
-       text-decoration: none;
-       font-weight: 700;
-       text-transform: uppercase;
-       transition: all 0.3s ease;
-       margin-top: 16px;
-   }
-   
-   .iris-login-btn:hover {
-       background: #3de9f4;
-       color: #0C2D39;
-       transform: translateY(-2px);
-       text-decoration: none;
-   }
-   
-   /* NOUVEAU v1.1.0 - Styles pour sélection preset */
-   .iris-preset-selection {
-       background: #0C2D39;
-       color: #F4F4F2;
-       padding: 20px;
-       border-radius: 12px;
-       margin-bottom: 20px;
-       font-family: "Lato", sans-serif;
-   }
-   
-   .iris-preset-selection h4 {
-       color: #3de9f4;
-       margin: 0 0 15px 0;
-       font-size: 18px;
-       font-weight: 600;
-   }
-   
-   .iris-preset-selection select {
-       width: 100%;
-       padding: 12px 16px;
-       border: 2px solid #124C58;
-       border-radius: 8px;
-       background: #15697B;
-       color: #F4F4F2;
-       font-size: 14px;
-       font-family: "Lato", sans-serif;
-       margin-bottom: 10px;
-   }
-   
-   .iris-preset-selection select:focus {
-       outline: none;
-       border-color: #3de9f4;
-   }
-   
-   .iris-preset-selection .description {
-       color: #ccc;
-       font-size: 13px;
-       margin: 0;
-       font-style: italic;
-   }
-   
-   .iris-file-input-styled {
-       position: absolute;
-       top: 0;
-       left: 0;
-       width: 100%;
-       height: 100%;
-       opacity: 0;
-       cursor: pointer;
-       z-index: 10;
-       font-size: 0;
-   }
-   
-   .iris-drop-zone {
-       position: relative;
-       border: 3px dashed #3de9f4;
-       border-radius: 12px;
-       padding: 40px 20px;
-       text-align: center;
-       cursor: pointer;
-       transition: all 0.3s ease;
-       background: rgba(60, 233, 244, 0.1);
-       overflow: hidden;
-   }
-   
-   .iris-drop-zone:hover {
-       border-color: #F05A28;
-       background: rgba(240, 90, 40, 0.1);
-       transform: scale(1.02);
-   }
-   
-   .iris-drop-content {
-       position: relative;
-       z-index: 1;
-       pointer-events: none;
-       color: #F4F4F2;
-   }
-   
-   .iris-upload-icon {
-       margin-bottom: 20px;
-   }
-   
-   .iris-drop-content h4 {
-       color: #3de9f4;
-       font-size: 20px;
-       margin: 10px 0;
-   }
-   
-   .iris-drop-content p {
-       color: #F4F4F2;
-       margin: 5px 0;
-       font-size: 14px;
-   }
-   
-   #iris-file-preview {
-       background: #0C2D39;
-       border-radius: 8px;
-       padding: 15px;
-       margin: 20px 0;
-       display: flex;
-       justify-content: space-between;
-       align-items: center;
-   }
-   
-   .iris-file-info {
-       color: #F4F4F2;
-       display: flex;
-       gap: 15px;
-       align-items: center;
-   }
-   
-   #iris-file-name {
-       font-weight: bold;
-       color: #3de9f4;
-   }
-   
-   #iris-file-size {
-       color: #ccc;
-       font-size: 14px;
-   }
-   
-   #iris-remove-file {
-       background: #F05A28;
-       color: white;
-       border: none;
-       border-radius: 50%;
-       width: 30px;
-       height: 30px;
-       cursor: pointer;
-       font-size: 16px;
-       font-weight: bold;
-   }
-   
-   #iris-remove-file:hover {
-       background: #e04a1a;
-   }
-   
-   .iris-upload-actions {
-       text-align: center;
-       margin-top: 20px;
-   }
-   
-   #iris-upload-btn {
-       background: #F05A28;
-       color: #F4F4F2;
-       border: none;
-       padding: 15px 30px;
-       border-radius: 25px;
-       font-size: 16px;
-       font-weight: bold;
-       cursor: pointer;
-       transition: all 0.3s ease;
-       text-transform: uppercase;
-   }
-   
-   #iris-upload-btn:hover:not(:disabled) {
-       background: #3de9f4;
-       color: #0C2D39;
-       transform: translateY(-2px);
-   }
-   
-   #iris-upload-btn:disabled {
-       opacity: 0.6;
-       cursor: not-allowed;
-       transform: none;
-   }
-   
-   #iris-upload-result {
-       margin-top: 20px;
-   }
-   
-   .iris-success {
-       background: #28a745;
-       color: white;
-       padding: 20px;
-       border-radius: 8px;
-       text-align: center;
-   }
-   
-   .iris-error {
-       background: #dc3545;
-       color: white;
-       padding: 20px;
-       border-radius: 8px;
-       text-align: center;
-   }
-   
-   .iris-success h4,
-   .iris-error h4 {
-       margin: 0 0 10px 0;
-       font-size: 18px;
-   }
-   
-   .iris-success p,
-   .iris-error p {
-       margin: 5px 0;
-   }
-   
-   #iris-process-history {
-       background: #0C2D39;
-       color: #F4F4F2;
-       padding: 20px;
-       border-radius: 12px;
-       margin-top: 30px;
-   }
-   
-   #iris-process-history h3 {
-       color: #3de9f4;
-       margin: 0 0 20px 0;
-       font-size: 20px;
-       text-align: center;
-   }
-   
-   .iris-history-items {
-       display: flex;
-       flex-direction: column;
-       gap: 15px;
-   }
-   
-   .iris-history-item {
-       background: #15697B;
-       padding: 15px;
-       border-radius: 8px;
-       display: flex;
-       justify-content: space-between;
-       align-items: center;
-   }
-   
-   .iris-history-info {
-       flex: 1;
-   }
-   
-   .iris-history-info strong {
-       color: #3de9f4;
-       display: block;
-       margin-bottom: 5px;
-   }
-   
-   .iris-status {
-       background: #F05A28;
-       color: white;
-       padding: 3px 8px;
-       border-radius: 12px;
-       font-size: 12px;
-       margin-right: 10px;
-   }
-   
-   .iris-date {
-       color: #ccc;
-       font-size: 14px;
-   }
-   
-   .iris-download-btn {
-       background: #3de9f4;
-       color: #0C2D39;
-       padding: 8px 15px;
-       border-radius: 5px;
-       text-decoration: none;
-       font-weight: bold;
-       transition: all 0.3s ease;
-   }
-   
-   .iris-download-btn:hover {
-       background: #2bc9d4;
-       text-decoration: none;
-       color: #0C2D39;
-   }
-   
-   @media (max-width: 768px) {
-       #iris-upload-container {
-           padding: 10px;
-       }
-       
-       .iris-drop-zone {
-           padding: 20px 10px;
-       }
-       
-       .iris-history-item {
-           flex-direction: column;
-           align-items: flex-start;
-           gap: 10px;
-       }
-       
-       .iris-preset-selection select {
-           font-size: 16px; /* Éviter le zoom sur mobile */
-       }
-   }
-   </style>';
+ * Enqueue des scripts frontend avec chargement conditionnel
+ * 
+ * @since 1.1.1
+ * @return void
+ */
+function iris_enqueue_upload_scripts() {
+    // Chargement conditionnel - seulement si nécessaire
+    if (!iris_should_load_upload_scripts()) {
+        return;
+    }
+    
+    wp_enqueue_script('jquery');
+    
+    // Styles
+    wp_enqueue_style(
+        'iris-upload', 
+        IRIS_PLUGIN_URL . 'assets/iris-upload.css', 
+        array(), 
+        IRIS_PLUGIN_VERSION
+    );
+    
+    // JavaScript
+    wp_enqueue_script(
+        'iris-upload', 
+        IRIS_PLUGIN_URL . 'assets/iris-upload.js', 
+        array('jquery'), 
+        IRIS_PLUGIN_VERSION, 
+        true
+    );
+    
+    // Localisation avec toutes les données nécessaires
+    wp_localize_script('iris-upload', 'iris_ajax', array(
+        'ajax_url' => admin_url('admin-ajax.php'),
+        'nonce' => wp_create_nonce('iris_upload_nonce'),
+        'max_file_size' => wp_max_upload_size(),
+        'max_file_size_human' => size_format(wp_max_upload_size()),
+        'allowed_extensions' => array('cr3', 'cr2', 'nef', 'arw', 'raw', 'dng', 'orf', 'raf', 'rw2', 'jpg', 'jpeg', 'tif', 'tiff', 'png'),
+        'strings' => array(
+            'select_file' => 'Veuillez sélectionner un fichier',
+            'upload_error' => 'Erreur lors de l\'upload',
+            'processing' => 'Traitement en cours...',
+            'completed' => 'Traitement terminé',
+            'failed' => 'Traitement échoué'
+        )
+    ));
 }
 
 /**
-* JavaScript pour la zone d'upload (MODIFIÉ v1.1.0)
-* 
-* @since 1.0.0
-* @since 1.1.0 Ajout gestion preset dans formulaire
-* @return string JavaScript complet
-*/
-function iris_get_upload_scripts() {
-   return '<script type="text/javascript">
-   jQuery(document).ready(function($) {
-       console.log("🚀 Iris Upload v1.1.0 - Avec support presets JSON");
-       
-       var dropZone = $("#iris-drop-zone");
-       var fileInput = $("#iris-file-input");
-       var filePreview = $("#iris-file-preview");
-       var fileName = $("#iris-file-name");
-       var fileSize = $("#iris-file-size");
-       var removeBtn = $("#iris-remove-file");
-       var uploadBtn = $("#iris-upload-btn");
-       var uploadForm = $("#iris-upload-form");
-       var result = $("#iris-upload-result");
-       var presetSelect = $("#iris-preset-select"); // NOUVEAU v1.1.0
-       
-       var selectedFile = null;
-       
-       console.log("Éléments:", {
-           dropZone: dropZone.length,
-           fileInput: fileInput.length,
-           presetSelect: presetSelect.length
-       });
-       
-       // Empêcher défaut navigateur
-       $(document).on("dragover drop", function(e) {
-           e.preventDefault();
-       });
-       
-       // INPUT CHANGE - Principal événement
-       fileInput.on("change", function() {
-           console.log("📂 Input change détecté !");
-           if (this.files && this.files.length > 0) {
-               handleFile(this.files[0]);
-           }
-       });
-       
-       // Drag & Drop sur la zone
-       dropZone.on("dragover dragenter", function(e) {
-           e.preventDefault();
-           $(this).css("background-color", "rgba(240, 90, 40, 0.2)");
-           console.log("📁 Drag over");
-       });
-       
-       dropZone.on("dragleave", function(e) {
-           e.preventDefault();
-           $(this).css("background-color", "rgba(60, 233, 244, 0.1)");
-       });
-       
-       dropZone.on("drop", function(e) {
-           e.preventDefault();
-           $(this).css("background-color", "rgba(60, 233, 244, 0.1)");
-           console.log("📥 Drop détecté");
-           
-           var files = e.originalEvent.dataTransfer.files;
-           if (files && files.length > 0) {
-               handleFile(files[0]);
-           }
-       });
-       
-       // Gestion changement de preset (NOUVEAU v1.1.0)
-       presetSelect.on("change", function() {
-           var selectedPreset = $(this).find("option:selected").text();
-           console.log("🎨 Preset sélectionné:", selectedPreset);
-           
-           // Mettre à jour le texte du bouton si un preset spécifique est choisi
-           if ($(this).val()) {
-               uploadBtn.find(".iris-btn-text").text("Traiter avec preset (1 jeton)");
-           } else {
-               uploadBtn.find(".iris-btn-text").text("Traiter l\'image (1 jeton)");
-           }
-       });
-       
-       // Traitement fichier
-       function handleFile(file) {
-           console.log("🔍 Fichier:", file.name);
-           
-           var ext = file.name.split(".").pop().toLowerCase();
-           var allowed = ["jpg", "jpeg", "tif", "tiff", "cr3", "nef", "arw", "raw", "dng", "orf", "raf", "rw2"];
-           
-           if (allowed.indexOf(ext) === -1) {
-               alert("Format non supporté: " + ext.toUpperCase());
-               return;
-           }
-           
-           selectedFile = file;
-           fileName.text(file.name);
-           fileSize.text(formatSize(file.size));
-           filePreview.show();
-           uploadBtn.prop("disabled", false);
-           
-           dropZone.css("background-color", "rgba(40, 167, 69, 0.2)");
-           console.log("✅ Fichier accepté");
-       }
-       
-       // Supprimer fichier
-       removeBtn.on("click", function(e) {
-           e.preventDefault();
-           selectedFile = null;
-           fileInput.val("");
-           filePreview.hide();
-           uploadBtn.prop("disabled", true);
-           dropZone.css("background-color", "rgba(60, 233, 244, 0.1)");
-           
-           // Réinitialiser le texte du bouton
-           uploadBtn.find(".iris-btn-text").text("Traiter l\'image (1 jeton)");
-           console.log("🗑️ Fichier supprimé");
-       });
-       
-       // Submit formulaire (MODIFIÉ v1.1.0)
-       uploadForm.on("submit", function(e) {
-           e.preventDefault();
-           
-           if (!selectedFile) {
-               alert("Sélectionnez un fichier");
-               return;
-           }
-           
-           var selectedPresetId = presetSelect.val();
-           console.log("🚀 Upload:", selectedFile.name, "avec preset ID:", selectedPresetId);
-           
-           var originalText = uploadBtn.find(".iris-btn-text").text();
-           uploadBtn.prop("disabled", true);
-           uploadBtn.find(".iris-btn-text").hide();
-           uploadBtn.find(".iris-btn-loading").show();
-           
-           var formData = new FormData();
-           formData.append("action", "iris_upload_image");
-           formData.append("nonce", iris_ajax.nonce);
-           formData.append("image_file", selectedFile);
-           
-           // Ajouter le preset sélectionné (NOUVEAU v1.1.0)
-           if (selectedPresetId) {
-               formData.append("preset_id", selectedPresetId);
-           }
-           
-           $.ajax({
-               url: iris_ajax.ajax_url,
-               type: "POST",
-               data: formData,
-               processData: false,
-               contentType: false,
-               timeout: 120000,
-               success: function(resp) {
-                   console.log("📨 Réponse:", resp);
-                   
-                   if (resp && resp.success) {
-                       var successMsg = "<div style=\"background:#28a745;color:white;padding:15px;border-radius:8px;text-align:center;\">";
-                       successMsg += "<h4>✅ " + resp.data.message + "</h4>";
-                       successMsg += "<p>Jetons restants: " + resp.data.remaining_tokens + "</p>";
-                       successMsg += "<p>Job ID: " + resp.data.job_id + "</p>";
-                       
-                       // Afficher info preset si appliqué (NOUVEAU v1.1.0)
-                       if (resp.data.preset_applied) {
-                           successMsg += "<p>🎨 Preset appliqué avec succès</p>";
-                       }
-                       
-                       successMsg += "</div>";
-                       
-                       result.html(successMsg).show();
-                       $("#token-balance").text(resp.data.remaining_tokens);
-                       removeBtn.click();
-                       
-                       setTimeout(function() {
-                           location.reload();
-                       }, 3000);
-                   } else {
-                       var errorMsg = "<div style=\"background:#dc3545;color:white;padding:15px;border-radius:8px;text-align:center;\">";
-                       errorMsg += "<h4>❌ Erreur</h4>";
-                       errorMsg += "<p>" + (resp.data || "Erreur inconnue") + "</p>";
-                       errorMsg += "</div>";
-                       result.html(errorMsg).show();
-                   }
-               },
-               error: function(xhr, status, error) {
-                   console.error("💥 Erreur:", status, error);
-                   var errorMsg = "<div style=\"background:#dc3545;color:white;padding:15px;border-radius:8px;text-align:center;\">";
-                   errorMsg += "<h4>❌ Erreur de connexion</h4>";
-                   errorMsg += "<p>" + status + ": " + error + "</p>";
-                   errorMsg += "</div>";
-                   result.html(errorMsg).show();
-               },
-               complete: function() {
-                   uploadBtn.prop("disabled", false);
-                   uploadBtn.find(".iris-btn-text").show().text(originalText);
-                   uploadBtn.find(".iris-btn-loading").hide();
-               }
-           });
-       });
-       
-       function formatSize(bytes) {
-           if (bytes > 1048576) {
-               return Math.round(bytes / 1048576) + " MB";
-           }
-           return Math.round(bytes / 1024) + " KB";
-       }
-       
-       console.log("✅ Iris Upload v1.1.0 initialisé avec support presets !");
-   });
-   </script>';
+ * Détermine si les scripts d'upload doivent être chargés
+ * 
+ * @since 1.1.1
+ * @return bool
+ */
+function iris_should_load_upload_scripts() {
+    global $post;
+    
+    // Charger sur les pages avec shortcodes Iris
+    if ($post && (
+        has_shortcode($post->post_content, 'iris_upload_zone') ||
+        has_shortcode($post->post_content, 'iris_process_page')
+    )) {
+        return true;
+    }
+    
+    // Charger sur les pages templates spécifiques
+    if (is_page_template('iris-process.php') || is_page_template('page-iris.php')) {
+        return true;
+    }
+    
+    // Charger si URL contient iris (pages dédiées)
+    if (isset($_SERVER['REQUEST_URI']) && strpos($_SERVER['REQUEST_URI'], 'iris') !== false) {
+        return true;
+    }
+    
+    // Charger sur les pages d'administration Iris
+    if (is_admin() && isset($_GET['page']) && strpos($_GET['page'], 'iris') === 0) {
+        return true;
+    }
+    
+    return false;
 }

@@ -1,4 +1,5 @@
 <div class="iris-preset-upload">
+<div style="color:red;font-weight:bold;">DEBUG: preset-upload.php version modifiée</div>
     <div class="card">
         <h2>Uploader un nouveau preset</h2>
         <p>Uploadez un fichier preset Lightroom (.xmp) ou un preset JSON personnalisé.</p>
@@ -54,6 +55,24 @@
                         <textarea id="description" name="description" 
                                   class="large-text" rows="3"
                                   placeholder="Description optionnelle du preset"></textarea>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label for="photo_type">Type de photo</label>
+                    </th>
+                    <td>
+                        <input type="text" id="photo_type" name="photo_type" class="regular-text" placeholder="Ex : CR3, NEF, ARW, JPG..." required />
+                        <p class="description">Extension/type de fichier associé à ce preset (obligatoire).</p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label for="is_default">Preset par défaut</label>
+                    </th>
+                    <td>
+                        <input type="checkbox" id="is_default" name="is_default" value="1" />
+                        <span class="description">Cocher pour faire de ce preset le preset par défaut.</span>
                     </td>
                 </tr>
             </table>

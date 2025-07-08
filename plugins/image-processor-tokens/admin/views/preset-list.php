@@ -12,6 +12,8 @@
         <thead>
             <tr>
                 <th scope="col" class="column-name">Nom</th>
+                <th scope="col" class="column-photo-type">Type de photo</th>
+                <th scope="col" class="column-default">Par défaut</th>
                 <th scope="col" class="column-type">Type</th>
                 <th scope="col" class="column-camera">Modèles compatibles</th>
                 <th scope="col" class="column-date">Date</th>
@@ -33,6 +35,12 @@
                         <?php if (!empty($preset['description'])): ?>
                             <br><span class="description"><?php echo esc_html($preset['description']); ?></span>
                         <?php endif; ?>
+                    </td>
+                    <td class="column-photo-type">
+                        <?php echo isset($preset['photo_type']) ? esc_html($preset['photo_type']) : '<em>Non défini</em>'; ?>
+                    </td>
+                    <td class="column-default">
+                        <?php echo !empty($preset['is_default']) ? '<span style="color:green;font-weight:bold;">Oui</span>' : 'Non'; ?>
                     </td>
                     <td class="column-type">
                         <span class="preset-type preset-type-<?php echo $preset['type']; ?>">

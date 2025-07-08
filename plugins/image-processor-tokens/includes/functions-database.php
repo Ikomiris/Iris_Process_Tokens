@@ -132,6 +132,23 @@ function iris_create_tables() {
             KEY preset_id (preset_id)
         ) $charset_collate;";
         
+        // Table des presets associés à un type de photo (nouveau système)
+        $table_presets = $wpdb->prefix . 'iris_presets';
+        $sql_presets = "CREATE TABLE IF NOT EXISTS $table_presets (
+            id int(11) NOT NULL AUTO_INCREMENT,
+            file_name varchar(255) NOT NULL,
+            photo_type varchar(20) NOT NULL,
+            is_default tinyint(1) DEFAULT 0,
+            preset_name varchar(255) NOT NULL,
+            description text NULL,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY file_name (file_name),
+            KEY photo_type (photo_type),
+            KEY is_default (is_default)
+        ) $charset_collate;";
+        
         // Exécution des requêtes
         require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
         
@@ -142,6 +159,7 @@ function iris_create_tables() {
         $results['jobs'] = dbDelta($sql_jobs);
         $results['admin_presets'] = dbDelta($sql_admin_presets);
         $results['processing_params'] = dbDelta($sql_processing_params);
+        $results['presets'] = dbDelta($sql_presets);
         
         // Log des résultats
         iris_log_error('Tables créées avec succès: ' . json_encode(array_keys($results)));

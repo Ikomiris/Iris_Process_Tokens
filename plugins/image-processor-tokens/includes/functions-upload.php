@@ -1,10 +1,10 @@
 <?php
 /**
- * Fonctions de gestion de l'upload et du traitement
+ * Fonctions de gestion de l'upload et du traitement - VERSION SÉCURISÉE
  * 
  * @package IrisProcessTokens
  * @since 1.0.0
- * @version 1.1.1
+ * @since 1.1.1 Gestion d'erreurs renforcée
  */
 
 if (!defined('ABSPATH')) {
@@ -12,176 +12,149 @@ if (!defined('ABSPATH')) {
 }
 
 /**
- * Gestionnaire d'upload d'images (MODIFIÉ v1.1.0 pour presets)
+ * Gestionnaire d'upload d'images SÉCURISÉ
  * 
  * @since 1.0.0
- * @since 1.1.0 Ajout support presets JSON
- * @since 1.1.1 Validation sécurisée renforcée
+ * @since 1.1.1 Vérifications de sécurité renforcées
  * @return void
  */
 function iris_handle_image_upload() {
-    // Vérification du nonce
-    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'iris_upload_nonce')) {
-        wp_send_json_error('Erreur de sécurité - nonce invalide');
-        return;
-    }
+    // Log de démarrage
+    iris_log_error('IRIS UPLOAD: Début traitement upload');
     
-    $user_id = get_current_user_id();
-    if (!$user_id) {
-        wp_send_json_error('Utilisateur non connecté');
-        return;
-    }
-    
-    // Vérification du solde de jetons
-    if (!class_exists('Token_Manager')) {
-        wp_send_json_error('Gestionnaire de jetons non disponible');
-        return;
-    }
-    
-    $current_balance = Token_Manager::get_user_balance($user_id);
-    if ($current_balance < 1) {
-        wp_send_json_error('Solde de jetons insuffisant. Solde actuel: ' . $current_balance);
-        return;
-    }
-    
-    // Récupération du preset sélectionné (v1.1.0)
-    $preset_id = isset($_POST['preset_id']) ? intval($_POST['preset_id']) : null;
-    
-    // Vérification du fichier uploadé
-    if (!isset($_FILES['image_file']) || $_FILES['image_file']['error'] !== UPLOAD_ERR_OK) {
-        $error_messages = array(
-            UPLOAD_ERR_INI_SIZE => 'Fichier trop volumineux (limite serveur)',
-            UPLOAD_ERR_FORM_SIZE => 'Fichier trop volumineux (limite formulaire)',
-            UPLOAD_ERR_PARTIAL => 'Upload partiel',
-            UPLOAD_ERR_NO_FILE => 'Aucun fichier sélectionné',
-            UPLOAD_ERR_NO_TMP_DIR => 'Dossier temporaire manquant',
-            UPLOAD_ERR_CANT_WRITE => 'Erreur d\'écriture',
-            UPLOAD_ERR_EXTENSION => 'Extension bloquée'
-        );
+    // Vérifications de sécurité critiques
+    try {
+        // 1. Vérification du nonce
+        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'iris_upload_nonce')) {
+            throw new Exception('Erreur de sécurité - Nonce invalide');
+        }
         
-        $error_code = $_FILES['image_file']['error'] ?? UPLOAD_ERR_NO_FILE;
-        $error_msg = $error_messages[$error_code] ?? 'Erreur d\'upload inconnue';
+        // 2. Vérification utilisateur connecté
+        $user_id = get_current_user_id();
+        if (!$user_id) {
+            throw new Exception('Utilisateur non connecté');
+        }
         
-        wp_send_json_error('Erreur lors de l\'upload du fichier: ' . $error_msg);
-        return;
+        // 3. Vérification que Token_Manager existe
+        if (!class_exists('Token_Manager')) {
+            throw new Exception('Système de jetons non disponible');
+        }
+        
+        // 4. Vérification du solde de jetons
+        $balance = Token_Manager::get_user_balance($user_id);
+        if ($balance < 1) {
+            throw new Exception('Solde de jetons insuffisant (' . $balance . ' disponible)');
+        }
+        
+        // 5. Vérification du fichier uploadé
+        if (!isset($_FILES['image_file']) || $_FILES['image_file']['error'] !== UPLOAD_ERR_OK) {
+            $error_codes = array(
+                UPLOAD_ERR_INI_SIZE => 'Fichier trop volumineux (limite serveur)',
+                UPLOAD_ERR_FORM_SIZE => 'Fichier trop volumineux (limite formulaire)',
+                UPLOAD_ERR_PARTIAL => 'Upload partiel',
+                UPLOAD_ERR_NO_FILE => 'Aucun fichier sélectionné',
+                UPLOAD_ERR_NO_TMP_DIR => 'Dossier temporaire manquant',
+                UPLOAD_ERR_CANT_WRITE => 'Erreur d\'écriture disque',
+                UPLOAD_ERR_EXTENSION => 'Extension PHP bloquante'
+            );
+            
+            $error_code = isset($_FILES['image_file']) ? $_FILES['image_file']['error'] : UPLOAD_ERR_NO_FILE;
+            $error_message = isset($error_codes[$error_code]) ? $error_codes[$error_code] : 'Erreur upload inconnue';
+            throw new Exception('Erreur lors de l\'upload: ' . $error_message);
+        }
+        
+        // 6. Récupération sécurisée du preset
+        $preset_file_path = iris_get_preset_for_file($_FILES['image_file']['name']);
+        
+        // 7. Validation du fichier
+        $file = $_FILES['image_file'];
+        $validation_result = iris_validate_uploaded_file($file);
+        if (is_wp_error($validation_result)) {
+            throw new Exception($validation_result->get_error_message());
+        }
+        
+        // 8. Sauvegarde sécurisée du fichier
+        $file_path = iris_save_uploaded_file($file, $user_id);
+        if (is_wp_error($file_path)) {
+            throw new Exception($file_path->get_error_message());
+        }
+        
+        // 9. Création de l'enregistrement de traitement
+        $process_id = iris_create_process_record($user_id, $file['name'], $file_path);
+        if (!$process_id) {
+            throw new Exception('Erreur création enregistrement traitement');
+        }
+        
+        // 10. Envoi vers l'API Python
+        $api_result = iris_send_to_python_api($file_path, $user_id, $process_id, $preset_file_path);
+        if (is_wp_error($api_result)) {
+            throw new Exception('Erreur API: ' . $api_result->get_error_message());
+        }
+        
+        // Succès !
+        iris_log_error('IRIS UPLOAD: Succès pour utilisateur ' . $user_id);
+        
+        wp_send_json_success(array(
+            'message' => 'Fichier uploadé avec succès ! Traitement en cours...',
+            'process_id' => $process_id,
+            'job_id' => $api_result['job_id'],
+            'file_name' => basename($file_path),
+            'preset_applied' => isset($api_result['preset_applied']) ? $api_result['preset_applied'] : false,
+            'remaining_tokens' => Token_Manager::get_user_balance($user_id)
+        ));
+        
+    } catch (Exception $e) {
+        iris_log_error('IRIS UPLOAD ERROR: ' . $e->getMessage());
+        wp_send_json_error($e->getMessage());
     }
-    
-    $file = $_FILES['image_file'];
-    
-    // Validation sécurisée du fichier
-    $validation_result = iris_validate_uploaded_file($file);
-    if (is_wp_error($validation_result)) {
-        wp_send_json_error($validation_result->get_error_message());
-        return;
-    }
-    
-    // Création du répertoire d'upload sécurisé
-    $upload_result = iris_create_secure_upload_directory();
-    if (is_wp_error($upload_result)) {
-        wp_send_json_error($upload_result->get_error_message());
-        return;
-    }
-    
-    $iris_dir = $upload_result['path'];
-    
-    // Génération d'un nom de fichier unique et sécurisé
-    $file_info = iris_generate_secure_filename($file, $user_id);
-    $file_path = $iris_dir . '/' . $file_info['filename'];
-    
-    // Déplacement du fichier de manière sécurisée
-    if (!move_uploaded_file($file['tmp_name'], $file_path)) {
-        wp_send_json_error('Erreur lors de la sauvegarde du fichier');
-        return;
-    }
-    
-    // Validation finale du fichier sauvegardé
-    $final_validation = iris_validate_saved_file($file_path);
-    if (is_wp_error($final_validation)) {
-        unlink($file_path); // Nettoyer le fichier défaillant
-        wp_send_json_error($final_validation->get_error_message());
-        return;
-    }
-    
-    // Création de l'enregistrement de traitement
-    $process_id = iris_create_process_record($user_id, $file['name'], $file_path);
-    if (!$process_id) {
-        unlink($file_path);
-        wp_send_json_error('Erreur lors de la création de l\'enregistrement');
-        return;
-    }
-    
-    // Envoi vers l'API Python avec preset (v1.1.0)
-    $api_result = iris_send_to_python_api($file_path, $user_id, $process_id, $preset_id);
-    
-    if (is_wp_error($api_result)) {
-        wp_send_json_error($api_result->get_error_message());
-        return;
-    }
-    
-    // Succès - réponse avec toutes les informations
-    wp_send_json_success(array(
-        'message' => 'Fichier uploadé avec succès ! Traitement en cours...',
-        'process_id' => $process_id,
-        'job_id' => $api_result['job_id'],
-        'file_name' => $file['name'],
-        'file_size' => size_format($file['size']),
-        'preset_applied' => $api_result['preset_applied'] ?? false,
-        'remaining_tokens' => Token_Manager::get_user_balance($user_id)
-    ));
 }
 
 /**
- * Validation sécurisée d'un fichier uploadé
+ * Valide un fichier uploadé
  * 
  * @since 1.1.1
- * @param array $file Informations du fichier uploadé
- * @return true|WP_Error Validation réussie ou erreur
+ * @param array $file Données du fichier $_FILES
+ * @return true|WP_Error True si valide, WP_Error sinon
  */
 function iris_validate_uploaded_file($file) {
+    // Vérifications de base
+    if (!isset($file['name']) || !isset($file['size']) || !isset($file['tmp_name'])) {
+        return new WP_Error('invalid_file', 'Données de fichier incomplètes');
+    }
+    
     // Extensions autorisées
     $allowed_extensions = array('jpg', 'jpeg', 'tif', 'tiff', 'cr3', 'cr2', 'nef', 'arw', 'raw', 'dng', 'orf', 'raf', 'rw2', 'png');
-    
-    // Vérification de l'extension
     $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    
     if (!in_array($extension, $allowed_extensions)) {
-        return new WP_Error('invalid_extension', 'Format de fichier non supporté. Formats acceptés : ' . implode(', ', array_map('strtoupper', $allowed_extensions)));
+        return new WP_Error('invalid_format', 'Format de fichier non supporté: ' . strtoupper($extension) . '. Formats acceptés: ' . implode(', ', array_map('strtoupper', $allowed_extensions)));
     }
     
-    // Vérification de la taille
+    // Taille du fichier
     $max_size = wp_max_upload_size();
     if ($file['size'] > $max_size) {
-        return new WP_Error('file_too_large', 'Fichier trop volumineux. Taille maximum : ' . size_format($max_size));
+        return new WP_Error('file_too_large', 'Fichier trop volumineux. Taille maximum: ' . size_format($max_size));
     }
     
-    // Vérification du nom de fichier (sécurité)
-    if (!iris_is_safe_filename($file['name'])) {
-        return new WP_Error('unsafe_filename', 'Nom de fichier non sécurisé. Utilisez uniquement des lettres, chiffres, tirets et points.');
+    // Vérification que le fichier temporaire existe
+    if (!file_exists($file['tmp_name'])) {
+        return new WP_Error('temp_file_missing', 'Fichier temporaire non trouvé');
     }
     
-    // Vérification MIME type (sécurité renforcée)
-    $allowed_mimes = array(
-        'image/jpeg',
-        'image/tiff',
-        'image/x-canon-cr3',
-        'image/x-canon-cr2', 
-        'image/x-nikon-nef',
-        'image/x-sony-arw',
-        'image/x-adobe-dng',
-        'image/x-olympus-orf',
-        'image/x-fuji-raf',
-        'image/x-panasonic-rw2',
-        'image/png',
-        'application/octet-stream' // Pour certains RAW
-    );
-    
+    // Vérification MIME type basique
     $finfo = finfo_open(FILEINFO_MIME_TYPE);
     if ($finfo) {
         $mime_type = finfo_file($finfo, $file['tmp_name']);
         finfo_close($finfo);
         
-        if ($mime_type && !in_array($mime_type, $allowed_mimes)) {
-            // Log pour debug mais pas de blocage strict pour les RAW
-            iris_log_error("MIME type non standard détecté: {$mime_type} pour {$file['name']}");
+        $allowed_mimes = array(
+            'image/jpeg', 'image/tiff', 'image/x-canon-cr3', 'image/x-canon-cr2',
+            'image/x-nikon-nef', 'image/x-sony-arw', 'image/x-adobe-dng', 'image/png'
+        );
+        
+        // Note: Certains formats RAW peuvent avoir des MIME types génériques
+        if (!in_array($mime_type, $allowed_mimes) && !in_array($mime_type, array('application/octet-stream', 'image/x-dcraw'))) {
+            iris_log_error('IRIS WARNING: MIME type suspect: ' . $mime_type . ' pour fichier ' . $file['name']);
         }
     }
     
@@ -189,182 +162,132 @@ function iris_validate_uploaded_file($file) {
 }
 
 /**
- * Vérification de la sécurité d'un nom de fichier
+ * Sauvegarde sécurisée d'un fichier uploadé
  * 
  * @since 1.1.1
- * @param string $filename Nom du fichier
- * @return bool Fichier sûr
+ * @param array $file Données du fichier
+ * @param int $user_id ID de l'utilisateur
+ * @return string|WP_Error Chemin du fichier ou erreur
  */
-function iris_is_safe_filename($filename) {
-    // Caractères autorisés : lettres, chiffres, tirets, underscores, points, espaces
-    $safe_pattern = '/^[a-zA-Z0-9._\-\s]+$/';
-    
-    // Vérifier le pattern
-    if (!preg_match($safe_pattern, $filename)) {
-        return false;
-    }
-    
-    // Vérifier qu'il n'y a pas de double extensions dangereuses
-    if (preg_match('/\.(php|phtml|php3|php4|php5|pl|py|jsp|asp|sh|cgi)(\.|$)/i', $filename)) {
-        return false;
-    }
-    
-    return true;
-}
-
-/**
- * Création d'un répertoire d'upload sécurisé
- * 
- * @since 1.1.1
- * @return array|WP_Error Informations du répertoire ou erreur
- */
-function iris_create_secure_upload_directory() {
+function iris_save_uploaded_file($file, $user_id) {
+    // Création du répertoire d'upload sécurisé
     $upload_dir = wp_upload_dir();
-    
-    if ($upload_dir['error']) {
-        return new WP_Error('upload_dir_error', 'Erreur du répertoire d\'upload WordPress: ' . $upload_dir['error']);
-    }
-    
     $iris_dir = $upload_dir['basedir'] . '/iris-process';
     
-    // Créer le répertoire s'il n'existe pas
+    // Créer le répertoire avec permissions sécurisées
     if (!file_exists($iris_dir)) {
         if (!wp_mkdir_p($iris_dir)) {
-            return new WP_Error('mkdir_failed', 'Impossible de créer le répertoire iris-process');
+            return new WP_Error('dir_creation_failed', 'Impossible de créer le répertoire d\'upload');
         }
         
-        // Créer un fichier .htaccess pour la sécurité
-        $htaccess_content = "# Iris Process Security\n";
-        $htaccess_content .= "Options -Indexes\n";
-        $htaccess_content .= "Options -ExecCGI\n";
-        $htaccess_content .= "<Files \"*.php\">\n";
-        $htaccess_content .= "    Order allow,deny\n";
-        $htaccess_content .= "    Deny from all\n";
+        // Ajouter un fichier .htaccess pour sécuriser
+        $htaccess_content = "Options -Indexes\n";
+        $htaccess_content .= "Order deny,allow\n";
+        $htaccess_content .= "Deny from all\n";
+        $htaccess_content .= "<Files ~ \"\\.(jpg|jpeg|png|tif|tiff|cr3|cr2|nef|arw|raw|dng|orf|raf|rw2)$\">\n";
+        $htaccess_content .= "Allow from all\n";
         $htaccess_content .= "</Files>\n";
         
         file_put_contents($iris_dir . '/.htaccess', $htaccess_content);
-        
-        // Créer un index.php vide pour la sécurité
-        file_put_contents($iris_dir . '/index.php', '<?php // Silence is golden');
     }
     
-    // Vérifier les permissions
-    if (!is_writable($iris_dir)) {
-        return new WP_Error('not_writable', 'Le répertoire iris-process n\'est pas accessible en écriture');
-    }
-    
-    return array(
-        'path' => $iris_dir,
-        'url' => $upload_dir['baseurl'] . '/iris-process'
-    );
-}
-
-/**
- * Génération d'un nom de fichier unique et sécurisé
- * 
- * @since 1.1.1
- * @param array $file Informations du fichier
- * @param int $user_id ID de l'utilisateur
- * @return array Informations du fichier sécurisé
- */
-function iris_generate_secure_filename($file, $user_id) {
+    // Générer un nom de fichier sécurisé et unique
     $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-    $base_name = pathinfo($file['name'], PATHINFO_FILENAME);
+    $safe_filename = sanitize_file_name(pathinfo($file['name'], PATHINFO_FILENAME));
+    $unique_filename = uniqid('iris_' . $user_id . '_' . substr($safe_filename, 0, 20) . '_') . '.' . $extension;
     
-    // Nettoyer le nom de base
-    $safe_base = preg_replace('/[^a-zA-Z0-9._\-]/', '_', $base_name);
-    $safe_base = substr($safe_base, 0, 50); // Limiter la longueur
+    // Chemin de destination
+    $destination_path = $iris_dir . '/' . $unique_filename;
     
-    // Générer un nom unique
-    $timestamp = time();
-    $random = wp_generate_password(8, false);
-    $unique_name = "iris_{$user_id}_{$timestamp}_{$random}_{$safe_base}.{$extension}";
+    // Vérifier que le fichier de destination n'existe pas déjà
+    if (file_exists($destination_path)) {
+        $unique_filename = uniqid('iris_' . $user_id . '_' . time() . '_') . '.' . $extension;
+        $destination_path = $iris_dir . '/' . $unique_filename;
+    }
     
-    return array(
-        'filename' => $unique_name,
-        'original' => $file['name'],
-        'extension' => $extension,
-        'size' => $file['size']
-    );
+    // Déplacer le fichier de manière sécurisée
+    if (move_uploaded_file($file['tmp_name'], $destination_path)) {
+        // Définir les permissions appropriées
+        chmod($destination_path, 0644);
+        
+        iris_log_error('IRIS UPLOAD: Fichier sauvegardé - ' . $unique_filename);
+        return $destination_path;
+    } else {
+        return new WP_Error('move_failed', 'Erreur lors de la sauvegarde du fichier');
+    }
 }
 
 /**
- * Validation finale d'un fichier sauvegardé
- * 
- * @since 1.1.1
- * @param string $file_path Chemin du fichier sauvegardé
- * @return true|WP_Error Validation réussie ou erreur
- */
-function iris_validate_saved_file($file_path) {
-    // Vérifier que le fichier existe
-    if (!file_exists($file_path)) {
-        return new WP_Error('file_not_saved', 'Le fichier n\'a pas été sauvegardé correctement');
-    }
-    
-    // Vérifier la taille
-    $file_size = filesize($file_path);
-    if ($file_size === false || $file_size === 0) {
-        return new WP_Error('empty_file', 'Le fichier sauvegardé est vide');
-    }
-    
-    // Vérifier que ce n'est pas un fichier PHP déguisé
-    $file_start = file_get_contents($file_path, false, null, 0, 10);
-    if (strpos($file_start, '<?php') === 0) {
-        return new WP_Error('php_file_detected', 'Fichier PHP détecté - upload refusé pour sécurité');
-    }
-    
-    return true;
-}
-
-/**
- * Vérification du statut d'un traitement
+ * Vérification du statut d'un traitement - SÉCURISÉE
  * 
  * @since 1.0.0
- * @since 1.1.1 Validation sécurisée
+ * @since 1.1.1 Vérifications renforcées
  * @return void
  */
 function iris_check_process_status() {
-    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'iris_upload_nonce')) {
-        wp_send_json_error('Erreur de sécurité');
-        return;
+    try {
+        // Vérifications de sécurité
+        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'iris_upload_nonce')) {
+            throw new Exception('Erreur de sécurité');
+        }
+        
+        $user_id = get_current_user_id();
+        if (!$user_id) {
+            throw new Exception('Utilisateur non connecté');
+        }
+        
+        if (!isset($_POST['process_id'])) {
+            throw new Exception('ID de traitement manquant');
+        }
+        
+        $process_id = intval($_POST['process_id']);
+        if ($process_id <= 0) {
+            throw new Exception('ID de traitement invalide');
+        }
+        
+        // Récupération sécurisée du statut
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'iris_image_processes';
+        
+        $process = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM $table_name WHERE id = %d AND user_id = %d",
+            $process_id, $user_id
+        ));
+        
+        if (!$process) {
+            throw new Exception('Traitement non trouvé ou accès non autorisé');
+        }
+        
+        wp_send_json_success(array(
+            'status' => $process->status,
+            'process_id' => $process->id,
+            'created_at' => $process->created_at,
+            'updated_at' => $process->updated_at,
+            'progress' => iris_get_process_progress($process->status)
+        ));
+        
+    } catch (Exception $e) {
+        iris_log_error('IRIS STATUS ERROR: ' . $e->getMessage());
+        wp_send_json_error($e->getMessage());
     }
+}
+
+/**
+ * Calcule le pourcentage de progression d'un traitement
+ * 
+ * @since 1.1.1
+ * @param string $status Statut du traitement
+ * @return int Pourcentage de progression
+ */
+function iris_get_process_progress($status) {
+    $progress_map = array(
+        'uploaded' => 10,
+        'processing' => 50,
+        'completed' => 100,
+        'failed' => 0
+    );
     
-    $user_id = get_current_user_id();
-    if (!$user_id) {
-        wp_send_json_error('Utilisateur non connecté');
-        return;
-    }
-    
-    $process_id = isset($_POST['process_id']) ? intval($_POST['process_id']) : 0;
-    if ($process_id <= 0) {
-        wp_send_json_error('ID de processus invalide');
-        return;
-    }
-    
-    global $wpdb;
-    $table_name = $wpdb->prefix . 'iris_image_processes';
-    
-    $process = $wpdb->get_row($wpdb->prepare(
-        "SELECT * FROM {$table_name} WHERE id = %d AND user_id = %d",
-        $process_id, 
-        $user_id
-    ));
-    
-    if (!$process) {
-        wp_send_json_error('Traitement non trouvé');
-        return;
-    }
-    
-    wp_send_json_success(array(
-        'status' => $process->status,
-        'process_id' => $process->id,
-        'original_filename' => $process->original_filename,
-        'created_at' => $process->created_at,
-        'updated_at' => $process->updated_at,
-        'processing_start_time' => $process->processing_start_time,
-        'processing_end_time' => $process->processing_end_time,
-        'error_message' => $process->error_message
-    ));
+    return isset($progress_map[$status]) ? $progress_map[$status] : 0;
 }
 
 /**
@@ -375,157 +298,150 @@ function iris_check_process_status() {
  * @return void
  */
 function iris_handle_download() {
-    $process_id = isset($_GET['process_id']) ? intval($_GET['process_id']) : 0;
-    $nonce = isset($_GET['nonce']) ? $_GET['nonce'] : '';
-    
-    if (!$process_id || !$nonce) {
-        wp_die('Paramètres manquants', 'Erreur de téléchargement', array('response' => 400));
-    }
-    
-    if (!wp_verify_nonce($nonce, 'iris_download_' . $process_id)) {
-        wp_die('Erreur de sécurité', 'Accès non autorisé', array('response' => 403));
-    }
-    
-    $user_id = get_current_user_id();
-    if (!$user_id) {
-        wp_die('Utilisateur non connecté', 'Connexion requise', array('response' => 401));
-    }
-    
-    global $wpdb;
-    $table_name = $wpdb->prefix . 'iris_image_processes';
-    
-    $process = $wpdb->get_row($wpdb->prepare(
-        "SELECT * FROM {$table_name} WHERE id = %d AND user_id = %d",
-        $process_id, 
-        $user_id
-    ));
-    
-    if (!$process) {
-        wp_die('Traitement non trouvé', 'Fichier introuvable', array('response' => 404));
-    }
-    
-    if (!$process->processed_file_path || !file_exists($process->processed_file_path)) {
-        wp_die('Fichier traité non disponible', 'Fichier introuvable', array('response' => 404));
-    }
-    
-    // Vérification de sécurité supplémentaire
-    $upload_dir = wp_upload_dir();
-    $allowed_dir = $upload_dir['basedir'] . '/iris-process';
-    
-    if (strpos(realpath($process->processed_file_path), realpath($allowed_dir)) !== 0) {
-        wp_die('Accès non autorisé au fichier', 'Sécurité', array('response' => 403));
-    }
-    
-    // Préparation du téléchargement
-    $file_size = filesize($process->processed_file_path);
-    $file_name = 'iris_processed_' . basename($process->original_filename);
-    
-    // Headers pour le téléchargement
-    header('Content-Type: application/octet-stream');
-    header('Content-Disposition: attachment; filename="' . $file_name . '"');
-    header('Content-Length: ' . $file_size);
-    header('Cache-Control: must-revalidate');
-    header('Pragma: public');
-    
-    // Nettoyer le buffer de sortie
-    if (ob_get_level()) {
-        ob_end_clean();
-    }
-    
-    // Lire et envoyer le fichier par chunks pour éviter les problèmes de mémoire
-    $chunk_size = 8192;
-    $handle = fopen($process->processed_file_path, 'rb');
-    
-    if ($handle) {
-        while (!feof($handle)) {
-            echo fread($handle, $chunk_size);
-            flush();
+    try {
+        // Vérifications de sécurité
+        if (!isset($_GET['process_id']) || !isset($_GET['nonce'])) {
+            throw new Exception('Paramètres manquants');
         }
-        fclose($handle);
+        
+        $process_id = intval($_GET['process_id']);
+        $nonce = sanitize_text_field($_GET['nonce']);
+        
+        if (!wp_verify_nonce($nonce, 'iris_download_' . $process_id)) {
+            throw new Exception('Erreur de sécurité');
+        }
+        
+        $user_id = get_current_user_id();
+        if (!$user_id) {
+            throw new Exception('Utilisateur non connecté');
+        }
+        
+        // Récupération sécurisée du traitement
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'iris_image_processes';
+        
+        $process = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM $table_name WHERE id = %d AND user_id = %d",
+            $process_id, $user_id
+        ));
+        
+        if (!$process) {
+            throw new Exception('Traitement non trouvé');
+        }
+        
+        if (empty($process->processed_file_path) || !file_exists($process->processed_file_path)) {
+            throw new Exception('Fichier traité non disponible');
+        }
+        
+        // Vérification que le fichier est dans un répertoire autorisé
+        $upload_dir = wp_upload_dir();
+        $allowed_dir = $upload_dir['basedir'] . '/iris-process';
+        
+        if (strpos(realpath($process->processed_file_path), realpath($allowed_dir)) !== 0) {
+            throw new Exception('Accès au fichier non autorisé');
+        }
+        
+        // Log du téléchargement
+        iris_log_error('IRIS DOWNLOAD: Fichier téléchargé par utilisateur ' . $user_id . ' - ' . basename($process->processed_file_path));
+        
+        // Téléchargement sécurisé
+        $file_size = filesize($process->processed_file_path);
+        $file_name = 'iris_processed_' . sanitize_file_name(pathinfo($process->original_filename, PATHINFO_FILENAME)) . '_' . date('Y-m-d') . '.' . pathinfo($process->processed_file_path, PATHINFO_EXTENSION);
+        
+        // Headers sécurisés
+        header('Content-Type: application/octet-stream');
+        header('Content-Disposition: attachment; filename="' . $file_name . '"');
+        header('Content-Length: ' . $file_size);
+        header('Cache-Control: no-cache, must-revalidate');
+        header('Pragma: no-cache');
+        header('Expires: 0');
+        
+        // Lecture et envoi du fichier par chunks pour éviter les problèmes de mémoire
+        $handle = fopen($process->processed_file_path, 'rb');
+        if ($handle) {
+            while (!feof($handle)) {
+                echo fread($handle, 8192);
+                flush();
+            }
+            fclose($handle);
+        }
+        exit;
+        
+    } catch (Exception $e) {
+        iris_log_error('IRIS DOWNLOAD ERROR: ' . $e->getMessage());
+        wp_die('Erreur de téléchargement: ' . $e->getMessage());
     }
-    
-    exit;
 }
 
 /**
- * Enqueue des scripts frontend avec chargement conditionnel
+ * Nettoyage automatique des fichiers temporaires
  * 
  * @since 1.1.1
  * @return void
  */
-function iris_enqueue_upload_scripts() {
-    // Chargement conditionnel - seulement si nécessaire
-    if (!iris_should_load_upload_scripts()) {
+function iris_cleanup_temp_files() {
+    $upload_dir = wp_upload_dir();
+    $iris_dir = $upload_dir['basedir'] . '/iris-process/';
+    
+    if (!is_dir($iris_dir)) {
         return;
     }
     
-    wp_enqueue_script('jquery');
+    $files_cleaned = 0;
+    $files = glob($iris_dir . '*');
+    $now = time();
     
-    // Styles
-    wp_enqueue_style(
-        'iris-upload', 
-        IRIS_PLUGIN_URL . 'assets/iris-upload.css', 
-        array(), 
-        IRIS_PLUGIN_VERSION
-    );
+    foreach ($files as $file) {
+        if (is_file($file) && ($now - filemtime($file)) > (7 * 24 * 3600)) { // 7 jours
+            if (unlink($file)) {
+                $files_cleaned++;
+            }
+        }
+    }
     
-    // JavaScript
-    wp_enqueue_script(
-        'iris-upload', 
-        IRIS_PLUGIN_URL . 'assets/iris-upload.js', 
-        array('jquery'), 
-        IRIS_PLUGIN_VERSION, 
-        true
-    );
-    
-    // Localisation avec toutes les données nécessaires
-    wp_localize_script('iris-upload', 'iris_ajax', array(
-        'ajax_url' => admin_url('admin-ajax.php'),
-        'nonce' => wp_create_nonce('iris_upload_nonce'),
-        'max_file_size' => wp_max_upload_size(),
-        'max_file_size_human' => size_format(wp_max_upload_size()),
-        'allowed_extensions' => array('cr3', 'cr2', 'nef', 'arw', 'raw', 'dng', 'orf', 'raf', 'rw2', 'jpg', 'jpeg', 'tif', 'tiff', 'png'),
-        'strings' => array(
-            'select_file' => 'Veuillez sélectionner un fichier',
-            'upload_error' => 'Erreur lors de l\'upload',
-            'processing' => 'Traitement en cours...',
-            'completed' => 'Traitement terminé',
-            'failed' => 'Traitement échoué'
-        )
-    ));
+    if ($files_cleaned > 0) {
+        iris_log_error("IRIS CLEANUP: $files_cleaned fichiers temporaires supprimés");
+    }
 }
 
+// Programmer le nettoyage automatique
+if (!wp_next_scheduled('iris_cleanup_temp_files')) {
+    wp_schedule_event(time(), 'daily', 'iris_cleanup_temp_files');
+}
+add_action('iris_cleanup_temp_files', 'iris_cleanup_temp_files');
+
 /**
- * Détermine si les scripts d'upload doivent être chargés
- * 
- * @since 1.1.1
- * @return bool
+ * Sélectionne le preset à utiliser pour un fichier donné (par extension)
+ * @param string $file_name
+ * @return string|null Chemin du preset ou null
  */
-function iris_should_load_upload_scripts() {
-    global $post;
-    
-    // Charger sur les pages avec shortcodes Iris
-    if ($post && (
-        has_shortcode($post->post_content, 'iris_upload_zone') ||
-        has_shortcode($post->post_content, 'iris_process_page')
-    )) {
-        return true;
+function iris_get_preset_for_file($file_name) {
+    global $wpdb;
+    $table_presets = $wpdb->prefix . 'iris_presets';
+    $ext = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
+    // Chercher un preset pour ce type
+    $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_presets WHERE photo_type = %s LIMIT 1", $ext), ARRAY_A);
+    if ($row && !empty($row['file_name'])) {
+        $upload_dir = wp_upload_dir();
+        $preset_path = $upload_dir['basedir'] . '/iris-presets/uploads/' . $row['file_name'];
+        if (!file_exists($preset_path)) {
+            $preset_path = $upload_dir['basedir'] . '/iris-presets/' . $row['file_name'];
+        }
+        if (file_exists($preset_path)) {
+            return $preset_path;
+        }
     }
-    
-    // Charger sur les pages templates spécifiques
-    if (is_page_template('iris-process.php') || is_page_template('page-iris.php')) {
-        return true;
+    // Sinon, preset par défaut
+    $row = $wpdb->get_row("SELECT * FROM $table_presets WHERE is_default = 1 LIMIT 1", ARRAY_A);
+    if ($row && !empty($row['file_name'])) {
+        $upload_dir = wp_upload_dir();
+        $preset_path = $upload_dir['basedir'] . '/iris-presets/uploads/' . $row['file_name'];
+        if (!file_exists($preset_path)) {
+            $preset_path = $upload_dir['basedir'] . '/iris-presets/' . $row['file_name'];
+        }
+        if (file_exists($preset_path)) {
+            return $preset_path;
+        }
     }
-    
-    // Charger si URL contient iris (pages dédiées)
-    if (isset($_SERVER['REQUEST_URI']) && strpos($_SERVER['REQUEST_URI'], 'iris') !== false) {
-        return true;
-    }
-    
-    // Charger sur les pages d'administration Iris
-    if (is_admin() && isset($_GET['page']) && strpos($_GET['page'], 'iris') === 0) {
-        return true;
-    }
-    
-    return false;
+    return null;
 }

@@ -20,11 +20,7 @@
  * @author Ikomiris
  * @copyright 2025 iris4pro.com
  * 
- * Développé avec l'assistance de Claude.ai (Anthropic)
- * Environnement de développement : VS Code + SFTP + GitHub
- * Serveur de production : Hostinger.com
- * 
- * v1.1.1 : Correction des erreurs critiques causant plantage WordPress
+ * 🔄 CORRECTIF v1.1.1 : Ordre de chargement sécurisé
  */
 
 // =============================================================================
@@ -36,34 +32,18 @@ if (!defined('ABSPATH')) {
     exit('Accès direct interdit.');
 }
 
-// Vérification de la version PHP minimale
-if (version_compare(PHP_VERSION, '7.4', '<')) {
-    add_action('admin_notices', function() {
-        echo '<div class="notice notice-error"><p>Iris Process nécessite PHP 7.4 ou supérieur. Version actuelle : ' . PHP_VERSION . '</p></div>';
-    });
-    return;
-}
-
 /**
  * Définition des constantes du plugin
  * 
  * @since 1.0.0
  */
-if (!defined('IRIS_PLUGIN_VERSION')) {
-    define('IRIS_PLUGIN_VERSION', '1.1.1');
-}
-if (!defined('IRIS_PLUGIN_URL')) {
-    define('IRIS_PLUGIN_URL', plugin_dir_url(__FILE__));
-}
-if (!defined('IRIS_PLUGIN_PATH')) {
-    define('IRIS_PLUGIN_PATH', plugin_dir_path(__FILE__));
-}
-if (!defined('IRIS_API_URL')) {
-    define('IRIS_API_URL', 'http://54.155.119.226:8000');
-}
+define('IRIS_PLUGIN_VERSION', '1.1.1');
+define('IRIS_PLUGIN_URL', plugin_dir_url(__FILE__));
+define('IRIS_PLUGIN_PATH', plugin_dir_path(__FILE__));
+define('IRIS_API_URL', 'http://54.155.119.226:8000');
 
 // =============================================================================
-// 2. FONCTIONS UTILITAIRES GLOBALES
+// 2. FONCTIONS UTILITAIRES GLOBALES DE BASE
 // =============================================================================
 
 /**
@@ -74,44 +54,54 @@ if (!defined('IRIS_API_URL')) {
  * @param array $context Contexte additionnel
  * @return void
  */
-if (!function_exists('iris_log_error')) {
-    function iris_log_error($message, $context = array()) {
-        $log_message = '[Iris Process] ' . $message;
-        if (!empty($context)) {
-            $log_message .= ' | Context: ' . json_encode($context);
-        }
-        error_log($log_message);
-        
-        // En mode debug, aussi afficher dans admin
-        if (defined('WP_DEBUG') && WP_DEBUG && is_admin()) {
-            add_action('admin_notices', function() use ($message) {
-                echo '<div class="notice notice-warning"><p>Iris Process Debug: ' . esc_html($message) . '</p></div>';
-            });
+function iris_log_error($message, $context = array()) {
+    $log_message = '[Iris Process] ' . $message;
+    if (!empty($context)) {
+        $log_message .= ' | Context: ' . json_encode($context);
+    }
+    error_log($log_message);
+}
+
+/**
+ * Diagnostic de l'état du plugin
+ * 
+ * @since 1.1.1
+ * @return array État des composants
+ */
+function iris_diagnostic_check() {
+    $status = array(
+        'files_missing' => array(),
+        'classes_missing' => array(),
+        'functions_missing' => array(),
+        'critical_error' => false
+    );
+    
+    // Vérifier les fichiers critiques
+    $critical_files = array(
+        'includes/class-token-manager.php',
+        'includes/functions-database.php',
+        'includes/functions-upload.php'
+    );
+    
+    foreach ($critical_files as $file) {
+        if (!file_exists(IRIS_PLUGIN_PATH . $file)) {
+            $status['files_missing'][] = $file;
+            $status['critical_error'] = true;
         }
     }
-}
-
-/**
- * Fonction helper pour récupérer l'instance du plugin
- * 
- * @since 1.0.0
- * @return IrisProcessTokens|null
- */
-function iris_process_tokens() {
-    return IrisProcessTokens::get_instance();
+    
+    return $status;
 }
 
 // =============================================================================
-// 3. CLASSE PRINCIPALE
+// 3. CLASSE PRINCIPALE SÉCURISÉE
 // =============================================================================
 
 /**
- * Classe principale du plugin Iris Process
- * 
- * Gère l'initialisation du plugin, les hooks WordPress,
- * et coordonne tous les modules du système de traitement d'images.
+ * Classe principale du plugin Iris Process - VERSION SÉCURISÉE
  * 
  * @since 1.0.0
+ * @since 1.1.1 Ordre de chargement sécurisé
  */
 class IrisProcessTokens {
     
@@ -124,20 +114,20 @@ class IrisProcessTokens {
     private static $instance = null;
     
     /**
-     * État d'initialisation du plugin
-     * 
-     * @since 1.1.1
-     * @var bool
-     */
-    private $initialized = false;
-    
-    /**
-     * Erreurs d'initialisation
+     * État du plugin après chargement
      * 
      * @since 1.1.1
      * @var array
      */
-    private $init_errors = array();
+    private $plugin_status = array();
+    
+    /**
+     * Composants chargés avec succès
+     * 
+     * @since 1.1.1
+     * @var array
+     */
+    private $loaded_components = array();
     
     /**
      * Constructeur privé pour le pattern Singleton
@@ -145,13 +135,17 @@ class IrisProcessTokens {
      * @since 1.0.0
      */
     private function __construct() {
-        // Vérifier que WordPress est bien chargé
-        if (!defined('ABSPATH')) {
-            return;
+        // Diagnostic immédiat
+        $this->plugin_status = iris_diagnostic_check();
+        
+        if ($this->plugin_status['critical_error']) {
+            add_action('admin_notices', array($this, 'show_critical_error_notice'));
+            iris_log_error('IRIS CRITICAL: Fichiers manquants détectés', $this->plugin_status);
+            return; // Arrêter le chargement
         }
         
-        // Initialisation sécurisée
-        $this->safe_init();
+        // Chargement sécurisé
+        $this->init_safe_hooks();
     }
     
     /**
@@ -168,713 +162,370 @@ class IrisProcessTokens {
     }
     
     /**
-     * Initialisation sécurisée du plugin
+     * Initialise SEULEMENT les hooks de base sécurisés
      * 
      * @since 1.1.1
      * @return void
      */
-    private function safe_init() {
+    private function init_safe_hooks() {
+        // Chargement différé - CRITIQUE
+        add_action('plugins_loaded', array($this, 'load_plugin_components'), 10);
+        add_action('init', array($this, 'plugin_init'), 20);
+        
+        // Log d'initialisation de base
+        iris_log_error('Plugin Iris Process: Hooks de base initialisés - Version ' . IRIS_PLUGIN_VERSION);
+    }
+    
+    /**
+     * Charge les composants du plugin de manière sécurisée
+     * 
+     * @since 1.1.1
+     * @return void
+     */
+    public function load_plugin_components() {
         try {
-            // Étape 1: Hooks d'activation/désactivation (priorité haute)
-            $this->register_lifecycle_hooks();
+            // 1. Charger les dépendances de base
+            $this->load_core_dependencies();
             
-            // Étape 2: Chargement des dépendances
-            if (!$this->load_dependencies()) {
-                $this->init_errors[] = 'Impossible de charger les dépendances';
-                add_action('admin_notices', array($this, 'show_dependency_error'));
-                return;
+            // 2. Vérifier que les classes critiques existent
+            if (!$this->verify_critical_classes()) {
+                throw new Exception('Classes critiques manquantes');
             }
             
-            // Étape 3: Hooks WordPress (après init)
-            add_action('init', array($this, 'late_init'), 20);
-            add_action('plugins_loaded', array($this, 'plugins_loaded_init'), 20);
+            // 3. Initialiser les composants de base
+            $this->init_core_components();
             
-            // Marquer comme initialisé
-            $this->initialized = true;
+            // 4. Charger les composants non-critiques
+            $this->load_optional_components();
             
-        } catch (Error $e) {
-            iris_log_error('Erreur critique lors de l\'initialisation: ' . $e->getMessage());
-            $this->init_errors[] = $e->getMessage();
-            add_action('admin_notices', array($this, 'show_critical_error'));
+            // 5. Initialiser les hooks si tout est OK
+            $this->init_application_hooks();
+            
+            iris_log_error('Plugin Iris Process: Composants chargés avec succès');
+            
         } catch (Exception $e) {
-            iris_log_error('Exception lors de l\'initialisation: ' . $e->getMessage());
-            $this->init_errors[] = $e->getMessage();
-            add_action('admin_notices', array($this, 'show_critical_error'));
+            iris_log_error('IRIS ERROR: Échec du chargement - ' . $e->getMessage());
+            add_action('admin_notices', array($this, 'show_loading_error_notice'));
         }
     }
     
     /**
-     * Enregistre les hooks de cycle de vie du plugin
+     * Charge les dépendances de base obligatoires
      * 
      * @since 1.1.1
      * @return void
+     * @throws Exception Si fichier critique manquant
      */
-    private function register_lifecycle_hooks() {
-        register_activation_hook(__FILE__, array($this, 'activate'));
-        register_deactivation_hook(__FILE__, array($this, 'deactivate'));
-    }
-    
-    /**
-     * Initialisation après que WordPress soit complètement chargé
-     * 
-     * @since 1.1.1
-     * @return void
-     */
-    public function late_init() {
-        if (!$this->initialized) {
-            return;
-        }
+    private function load_core_dependencies() {
+        $core_files = array(
+            'includes/functions-database.php',
+            'includes/class-token-manager.php',
+            'includes/functions-upload.php'
+        );
         
-        try {
-            // Chargement des traductions
-            load_plugin_textdomain(
-                'iris-process-tokens',
-                false,
-                dirname(plugin_basename(__FILE__)) . '/languages'
-            );
-            
-            // Initialisation des composants principaux
-            $this->init_wordpress_hooks();
-            $this->init_classes();
-            
-            // Log d'initialisation réussie
-            if (defined('WP_DEBUG') && WP_DEBUG) {
-                iris_log_error('Plugin Iris Process initialisé avec succès - Version ' . IRIS_PLUGIN_VERSION);
+        foreach ($core_files as $file) {
+            $file_path = IRIS_PLUGIN_PATH . $file;
+            if (file_exists($file_path)) {
+                require_once $file_path;
+                $this->loaded_components[] = $file;
+            } else {
+                throw new Exception("Fichier critique manquant: $file");
             }
-            
-        } catch (Error $e) {
-            iris_log_error('Erreur lors de late_init: ' . $e->getMessage());
         }
     }
     
     /**
-     * Initialisation après chargement de tous les plugins
+     * Vérifie que les classes critiques sont disponibles
+     * 
+     * @since 1.1.1
+     * @return bool
+     */
+    private function verify_critical_classes() {
+        $critical_classes = array('Token_Manager');
+        
+        foreach ($critical_classes as $class) {
+            if (!class_exists($class)) {
+                iris_log_error("IRIS ERROR: Classe critique manquante - $class");
+                return false;
+            }
+        }
+        
+        return true;
+    }
+    
+    /**
+     * Initialise les composants de base
      * 
      * @since 1.1.1
      * @return void
      */
-    public function plugins_loaded_init() {
-        if (!$this->initialized) {
-            return;
+    private function init_core_components() {
+        // Créer les tables si nécessaire
+        if (function_exists('iris_create_tables')) {
+            iris_create_tables();
         }
         
-        // Vérifier et mettre à jour la base de données
+        // Vérifier la version de la DB
         if (function_exists('iris_maybe_update_database')) {
             iris_maybe_update_database();
         }
     }
     
     /**
-     * Initialise les hooks WordPress
+     * Charge les composants optionnels (non-critiques)
      * 
      * @since 1.1.1
      * @return void
      */
-    private function init_wordpress_hooks() {
-        // Scripts et styles
-        add_action('wp_enqueue_scripts', array($this, 'enqueue_frontend_scripts'));
-        add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_scripts'));
+    private function load_optional_components() {
+        $optional_files = array(
+            'includes/class-preset-manager.php',
+            'includes/class-user-dashboard.php',
+            'includes/class-image-processor.php',
+            'includes/class-ajax-handlers.php',
+            'includes/class-rest-api.php',
+            'includes/functions-api.php',
+            'includes/functions-admin.php',
+            'shortcodes/class-shortcodes.php'
+        );
         
-        // AJAX handlers (maintenant sécurisé)
-        add_action('wp_ajax_iris_upload_image', array($this, 'ajax_upload_image'));
-        add_action('wp_ajax_nopriv_iris_upload_image', array($this, 'ajax_upload_image'));
-        add_action('wp_ajax_iris_check_process_status', array($this, 'ajax_check_status'));
-        add_action('wp_ajax_iris_test_api', array($this, 'ajax_test_api'));
-        add_action('wp_ajax_iris_download', array($this, 'ajax_download'));
+        foreach ($optional_files as $file) {
+            $file_path = IRIS_PLUGIN_PATH . $file;
+            if (file_exists($file_path)) {
+                require_once $file_path;
+                $this->loaded_components[] = $file;
+            } else {
+                iris_log_error("IRIS WARNING: Fichier optionnel manquant - $file");
+            }
+        }
+    }
+    
+    /**
+     * Initialise les hooks de l'application APRÈS chargement
+     * 
+     * @since 1.1.1
+     * @return void
+     */
+    private function init_application_hooks() {
+        // Scripts et styles
+        add_action('wp_enqueue_scripts', 'iris_enqueue_upload_scripts');
+        add_action('admin_enqueue_scripts', 'iris_admin_enqueue_scripts');
+        
+        // AJAX handlers - SEULEMENT si les fonctions existent
+        if (function_exists('iris_handle_image_upload')) {
+            add_action('wp_ajax_iris_upload_image', 'iris_handle_image_upload');
+            add_action('wp_ajax_nopriv_iris_upload_image', 'iris_handle_image_upload');
+        }
+        
+        if (function_exists('iris_check_process_status')) {
+            add_action('wp_ajax_iris_check_process_status', 'iris_check_process_status');
+        }
+        
+        if (function_exists('iris_ajax_test_api')) {
+            add_action('wp_ajax_iris_test_api', 'iris_ajax_test_api');
+        }
         
         // REST API
-        add_action('rest_api_init', array($this, 'init_rest_api'));
+        if (function_exists('iris_register_rest_routes')) {
+            add_action('rest_api_init', 'iris_register_rest_routes');
+        }
         
         // Administration
-        if (is_admin()) {
-            add_action('admin_menu', array($this, 'init_admin_menu'));
-            add_action('wp_dashboard_setup', array($this, 'init_dashboard_widget'));
+        if (function_exists('iris_add_admin_menu')) {
+            add_action('admin_menu', 'iris_add_admin_menu');
         }
         
-        // Capacités et rôles
-        add_action('init', array($this, 'add_custom_capabilities'));
-        
-        // Nettoyage automatique
-        if (!wp_next_scheduled('iris_daily_cleanup')) {
-            wp_schedule_event(time(), 'daily', 'iris_daily_cleanup');
+        // Initialiser les classes si elles existent
+        if (class_exists('Iris_Process_Ajax_Handlers')) {
+            new Iris_Process_Ajax_Handlers();
         }
-        add_action('iris_daily_cleanup', array($this, 'daily_cleanup'));
         
-        // Intégrations externes
-        add_action('surecart/order_completed', array($this, 'handle_surecart_order'), 10, 1);
-        add_action('iris_job_completed', array($this, 'send_completion_email'), 10, 3);
+        if (class_exists('Iris_Process_Rest_Api')) {
+            new Iris_Process_Rest_Api();
+        }
+        
+        if (class_exists('Iris_Process_Shortcodes')) {
+            new Iris_Process_Shortcodes();
+        }
+        
+        if (class_exists('User_Dashboard')) {
+            new User_Dashboard();
+        }
+        
+        iris_log_error('Plugin Iris Process: Hooks d\'application initialisés');
     }
     
     /**
-     * Charge les dépendances du plugin de manière sécurisée
+     * Initialisation du plugin après le chargement de WordPress
      * 
-     * @since 1.1.1
-     * @return bool Succès du chargement
+     * @since 1.0.0
      */
-    private function load_dependencies() {
-        // Ordre de chargement important
-        $includes_files = array(
-            'includes/functions-database.php',      // Base de données en premier
-            'includes/functions-utilities.php',     // Utilitaires de base
-            'includes/class-token-manager.php',     // Gestion des tokens
-            'includes/class-preset-manager.php',    // Gestion des presets
-            'includes/class-user-dashboard.php',    // Interface utilisateur
-            'includes/class-surecart-integration.php', // Intégrations
-            'includes/functions-api.php',           // API REST
-            'includes/functions-upload.php',        // Gestion uploads
-            'includes/functions-admin.php',         // Administration
+    public function plugin_init() {
+        // Chargement des traductions
+        load_plugin_textdomain(
+            'iris-process-tokens',
+            false,
+            dirname(plugin_basename(__FILE__)) . '/languages'
         );
         
-        $loaded_count = 0;
-        $total_files = count($includes_files);
-        
-        foreach ($includes_files as $file) {
-            $file_path = IRIS_PLUGIN_PATH . $file;
-            
-            if (!file_exists($file_path)) {
-                iris_log_error("Fichier manquant: $file");
-                continue;
-            }
-            
-            try {
-                // Vérification de la syntaxe PHP avant inclusion
-                if (!$this->validate_php_syntax($file_path)) {
-                    iris_log_error("Erreur de syntaxe dans: $file");
-                    continue;
-                }
-                
-                require_once $file_path;
-                $loaded_count++;
-                
-            } catch (ParseError $e) {
-                iris_log_error("Erreur de parsing dans $file: " . $e->getMessage());
-                continue;
-            } catch (Error $e) {
-                iris_log_error("Erreur fatale dans $file: " . $e->getMessage());
-                continue;
-            } catch (Exception $e) {
-                iris_log_error("Exception dans $file: " . $e->getMessage());
-                continue;
-            }
-        }
-        
-        // Considérer comme succès si au moins 80% des fichiers sont chargés
-        $success_rate = ($loaded_count / $total_files) * 100;
-        
-        if ($success_rate < 80) {
-            iris_log_error("Taux de chargement insuffisant: {$success_rate}% ({$loaded_count}/{$total_files})");
-            return false;
-        }
-        
-        iris_log_error("Dépendances chargées: {$loaded_count}/{$total_files} ({$success_rate}%)");
-        return true;
-    }
-    
-    /**
-     * Valide la syntaxe PHP d'un fichier
-     * 
-     * @since 1.1.1
-     * @param string $file_path Chemin du fichier
-     * @return bool Syntaxe valide
-     */
-    private function validate_php_syntax($file_path) {
-        // Méthode simple de validation
-        $content = file_get_contents($file_path);
-        
-        // Vérifications basiques
-        if (strpos($content, '<?php') === false) {
-            return false;
-        }
-        
-        // Note: Pour une validation complète, on pourrait utiliser token_get_all()
-        // mais cela peut être coûteux en performance
-        
-        return true;
-    }
-    
-    /**
-     * Initialise les classes après chargement des dépendances
-     * 
-     * @since 1.1.1
-     * @return void
-     */
-    private function init_classes() {
-        $classes_to_init = array(
-            'User_Dashboard' => array('method' => 'construct'),
-            'SureCart_Integration' => array('method' => 'init'),
-            'Preset_Manager' => array('method' => 'construct'),
-        );
-        
-        foreach ($classes_to_init as $class_name => $config) {
-            if (!class_exists($class_name)) {
-                iris_log_error("Classe manquante: $class_name");
-                continue;
-            }
-            
-            try {
-                if ($config['method'] === 'construct') {
-                    new $class_name();
-                } else {
-                    call_user_func(array($class_name, $config['method']));
-                }
-                
-            } catch (Error $e) {
-                iris_log_error("Erreur initialisation $class_name: " . $e->getMessage());
-            } catch (Exception $e) {
-                iris_log_error("Exception initialisation $class_name: " . $e->getMessage());
-            }
-        }
+        iris_log_error('Plugin Iris Process: Init hook exécuté');
     }
     
     /**
      * Actions lors de l'activation du plugin
      * 
      * @since 1.0.0
-     * @return void
      */
     public function activate() {
-        try {
-            // Créer les tables de base de données
-            if (function_exists('iris_create_tables')) {
-                iris_create_tables();
-            }
-            
-            // Programmer le nettoyage automatique
-            if (!wp_next_scheduled('iris_daily_cleanup')) {
-                wp_schedule_event(time(), 'daily', 'iris_daily_cleanup');
-            }
-            
-            // Vider le cache des règles de réécriture
-            flush_rewrite_rules();
-            
-            // Définir la version de la base de données
-            update_option('iris_process_db_version', IRIS_PLUGIN_VERSION);
-            
-            // Log d'activation
-            iris_log_error('Plugin Iris Process activé - Version ' . IRIS_PLUGIN_VERSION);
-            
-        } catch (Error $e) {
-            iris_log_error('Erreur lors de l\'activation: ' . $e->getMessage());
-            wp_die('Erreur lors de l\'activation du plugin Iris Process: ' . $e->getMessage());
+        // Diagnostic avant activation
+        $status = iris_diagnostic_check();
+        if ($status['critical_error']) {
+            iris_log_error('ACTIVATION BLOQUÉE: Fichiers manquants', $status);
+            wp_die('Iris Process: Impossible d\'activer le plugin - fichiers manquants. Vérifiez l\'installation.');
         }
+        
+        // Créer les tables de base de données
+        if (function_exists('iris_create_tables')) {
+            iris_create_tables();
+        }
+        
+        // Programmer le nettoyage automatique
+        if (!wp_next_scheduled('iris_daily_cleanup')) {
+            wp_schedule_event(time(), 'daily', 'iris_daily_cleanup');
+        }
+        
+        // Vider le cache des règles de réécriture
+        flush_rewrite_rules();
+        
+        // Définir la version de la base de données
+        update_option('iris_process_db_version', IRIS_PLUGIN_VERSION);
+        
+        iris_log_error('Plugin Iris Process activé avec succès - Version ' . IRIS_PLUGIN_VERSION);
     }
     
     /**
      * Actions lors de la désactivation du plugin
      * 
      * @since 1.1.1
-     * @return void
      */
     public function deactivate() {
         // Nettoyer les tâches cron
         wp_clear_scheduled_hook('iris_daily_cleanup');
-        
-        // Log de désactivation
         iris_log_error('Plugin Iris Process désactivé');
     }
     
     /**
-     * Enqueue des scripts frontend
+     * Affiche un avis d'erreur critique
      * 
      * @since 1.1.1
      * @return void
      */
-    public function enqueue_frontend_scripts() {
-        // Chargement conditionnel - seulement si nécessaire
-        if (!$this->should_load_frontend_scripts()) {
-            return;
+    public function show_critical_error_notice() {
+        $missing_files = implode(', ', $this->plugin_status['files_missing']);
+        ?>
+        <div class="notice notice-error">
+            <p><strong>Iris Process:</strong> Plugin désactivé - Fichiers critiques manquants:</p>
+            <ul>
+                <?php foreach ($this->plugin_status['files_missing'] as $file): ?>
+                    <li><code><?php echo esc_html($file); ?></code></li>
+                <?php endforeach; ?>
+            </ul>
+            <p>Veuillez réinstaller le plugin ou contacter le support.</p>
+        </div>
+        <?php
+    }
+    
+    /**
+     * Affiche un avis d'erreur de chargement
+     * 
+     * @since 1.1.1
+     * @return void
+     */
+    public function show_loading_error_notice() {
+        ?>
+        <div class="notice notice-warning">
+            <p><strong>Iris Process:</strong> Le plugin fonctionne en mode dégradé. Certaines fonctionnalités peuvent être indisponibles.</p>
+            <p>Consultez les logs pour plus d'informations.</p>
+        </div>
+        <?php
+    }
+
+    /**
+     * Méthodes statiques pour l'activation/désactivation (pour les hooks globaux)
+     */
+    public static function activate_static() {
+        $instance = self::get_instance();
+        if (method_exists($instance, 'activate')) {
+            $instance->activate();
+        }
+    }
+    public static function deactivate_static() {
+        $instance = self::get_instance();
+        if (method_exists($instance, 'deactivate')) {
+            $instance->deactivate();
+        }
+    }
+    /**
+     * Ajoute les méthodes statiques si elles n'existent pas (pour compatibilité)
+     */
+    public static function add_static_activation_methods() {}
+}
+
+// =============================================================================
+// 4. FONCTIONS DE FALLBACK SÉCURISÉES
+// =============================================================================
+
+/**
+ * Fallback pour iris_enqueue_upload_scripts
+ */
+if (!function_exists('iris_enqueue_upload_scripts')) {
+    function iris_enqueue_upload_scripts() {
+        wp_enqueue_script('jquery');
+        
+        // Charger les styles seulement si le fichier existe
+        $css_file = IRIS_PLUGIN_PATH . 'assets/iris-upload.css';
+        if (file_exists($css_file)) {
+            wp_enqueue_style('iris-upload', IRIS_PLUGIN_URL . 'assets/iris-upload.css', array(), IRIS_PLUGIN_VERSION);
         }
         
-        wp_enqueue_script('jquery');
-        wp_enqueue_style('iris-upload', IRIS_PLUGIN_URL . 'assets/iris-upload.css', array(), IRIS_PLUGIN_VERSION);
-        wp_enqueue_script('iris-upload', IRIS_PLUGIN_URL . 'assets/iris-upload.js', array('jquery'), IRIS_PLUGIN_VERSION, true);
+        // Charger le JS seulement si le fichier existe
+        $js_file = IRIS_PLUGIN_PATH . 'assets/iris-upload.js';
+        if (file_exists($js_file)) {
+            wp_enqueue_script('iris-upload', IRIS_PLUGIN_URL . 'assets/iris-upload.js', array('jquery'), IRIS_PLUGIN_VERSION, true);
+        }
         
-        wp_localize_script('iris-upload', 'iris_ajax', array(
+        wp_localize_script('jquery', 'iris_ajax', array(
             'ajax_url' => admin_url('admin-ajax.php'),
             'nonce' => wp_create_nonce('iris_upload_nonce'),
             'max_file_size' => wp_max_upload_size(),
             'allowed_types' => array('image/jpeg', 'image/tiff', 'image/x-canon-cr3', 'image/x-nikon-nef', 'image/x-sony-arw')
         ));
     }
-    
-    /**
-     * Détermine si les scripts frontend doivent être chargés
-     * 
-     * @since 1.1.1
-     * @return bool
-     */
-    private function should_load_frontend_scripts() {
-        global $post;
-        
-        // Charger sur les pages avec shortcodes Iris
-        if ($post && has_shortcode($post->post_content, 'iris_upload_zone')) {
-            return true;
-        }
-        
-        // Charger sur les pages templates spécifiques
-        if (is_page_template('iris-process.php')) {
-            return true;
-        }
-        
-        // Charger si URL contient iris
-        if (strpos($_SERVER['REQUEST_URI'], 'iris') !== false) {
-            return true;
-        }
-        
-        return false;
-    }
-    
-    /**
-     * Enqueue des scripts admin
-     * 
-     * @since 1.1.1
-     * @param string $hook Page admin actuelle
-     * @return void
-     */
-    public function enqueue_admin_scripts($hook) {
+}
+
+/**
+ * Fallback pour iris_admin_enqueue_scripts
+ */
+if (!function_exists('iris_admin_enqueue_scripts')) {
+    function iris_admin_enqueue_scripts($hook) {
         if (strpos($hook, 'iris') === false) {
             return;
         }
         
-        wp_enqueue_style('iris-admin', IRIS_PLUGIN_URL . 'assets/iris-admin.css', array(), IRIS_PLUGIN_VERSION);
-        wp_enqueue_script('iris-admin', IRIS_PLUGIN_URL . 'assets/iris-admin.js', array('jquery'), IRIS_PLUGIN_VERSION, true);
-    }
-    
-    /**
-     * Gestionnaires AJAX sécurisés
-     */
-    public function ajax_upload_image() {
-        if (function_exists('iris_handle_image_upload')) {
-            iris_handle_image_upload();
-        } else {
-            wp_send_json_error('Fonction de traitement non disponible');
-        }
-    }
-    
-    public function ajax_check_status() {
-        if (function_exists('iris_check_process_status')) {
-            iris_check_process_status();
-        } else {
-            wp_send_json_error('Fonction de vérification non disponible');
-        }
-    }
-    
-    public function ajax_test_api() {
-        if (function_exists('iris_ajax_test_api')) {
-            iris_ajax_test_api();
-        } else {
-            wp_send_json_error('Fonction de test API non disponible');
-        }
-    }
-    
-    public function ajax_download() {
-        if (function_exists('iris_handle_download')) {
-            iris_handle_download();
-        } else {
-            wp_die('Fonction de téléchargement non disponible');
-        }
-    }
-    
-    /**
-     * Initialisation des autres composants
-     */
-    public function init_rest_api() {
-        if (function_exists('iris_register_rest_routes')) {
-            iris_register_rest_routes();
-        }
-    }
-    
-    public function init_admin_menu() {
-        if (function_exists('iris_add_admin_menu')) {
-            iris_add_admin_menu();
-        }
-    }
-    
-    public function init_dashboard_widget() {
-        if (function_exists('iris_add_dashboard_widget')) {
-            iris_add_dashboard_widget();
-        }
-    }
-    
-    public function add_custom_capabilities() {
-        if (function_exists('iris_add_custom_capabilities')) {
-            iris_add_custom_capabilities();
-        } else {
-            // Fallback : ajouter les capacités de base
-            $role = get_role('subscriber');
-            if ($role) {
-                $role->add_cap('iris_process_images');
-            }
-        }
-    }
-    
-    public function daily_cleanup() {
-        if (function_exists('iris_cleanup_old_jobs')) {
-            iris_cleanup_old_jobs();
-        } else {
-            // Fallback : nettoyage basique
-            $this->basic_cleanup();
-        }
-    }
-    
-    public function handle_surecart_order($order) {
-        if (function_exists('iris_handle_surecart_order')) {
-            iris_handle_surecart_order($order);
-        } else {
-            // Fallback : log de l'ordre reçu
-            iris_log_error('Commande SureCart reçue mais handler non disponible: ' . json_encode($order));
-        }
-    }
-    
-    public function send_completion_email($user_id, $job_id, $status) {
-        if (function_exists('iris_send_completion_email')) {
-            iris_send_completion_email($user_id, $job_id, $status);
-        } else {
-            // Fallback : notification basique
-            $this->basic_completion_notification($user_id, $job_id, $status);
-        }
-    }
-    
-    /**
-     * Nettoyage basique en cas d'absence de la fonction principale
-     * 
-     * @since 1.1.1
-     * @return void
-     */
-    private function basic_cleanup() {
-        global $wpdb;
-        
-        try {
-            // Supprimer les jobs de plus de 30 jours
-            $table_jobs = $wpdb->prefix . 'iris_processing_jobs';
-            $deleted = $wpdb->query($wpdb->prepare(
-                "DELETE FROM {$table_jobs} WHERE created_at < DATE_SUB(NOW(), INTERVAL %d DAY)",
-                30
-            ));
-            
-            if ($deleted !== false) {
-                iris_log_error("Nettoyage basique : {$deleted} jobs supprimés");
-            }
-            
-        } catch (Exception $e) {
-            iris_log_error('Erreur lors du nettoyage basique: ' . $e->getMessage());
-        }
-    }
-    
-    /**
-     * Notification basique de completion
-     * 
-     * @since 1.1.1
-     * @param int $user_id ID utilisateur
-     * @param string $job_id ID du job
-     * @param string $status Statut final
-     * @return void
-     */
-    private function basic_completion_notification($user_id, $job_id, $status) {
-        $user = get_user_by('id', $user_id);
-        if (!$user) {
-            return;
+        $css_file = IRIS_PLUGIN_PATH . 'assets/iris-admin.css';
+        if (file_exists($css_file)) {
+            wp_enqueue_style('iris-admin', IRIS_PLUGIN_URL . 'assets/iris-admin.css', array(), IRIS_PLUGIN_VERSION);
         }
         
-        $subject = 'Iris Process - Traitement terminé';
-        $message = "Bonjour {$user->display_name},\n\n";
-        $message .= "Votre traitement d'image (Job: {$job_id}) est terminé.\n";
-        $message .= "Statut: {$status}\n\n";
-        $message .= "Vous pouvez consulter vos résultats sur " . home_url() . "\n\n";
-        $message .= "L'équipe Iris Process";
-        
-        wp_mail($user->user_email, $subject, $message);
-        iris_log_error("Email de notification envoyé à {$user->user_email} pour job {$job_id}");
-    }
-    
-    /**
-     * Affichage des erreurs de dépendances
-     * 
-     * @since 1.1.1
-     * @return void
-     */
-    public function show_dependency_error() {
-        echo '<div class="notice notice-error">
-            <p><strong>Erreur Iris Process</strong> : Impossible de charger toutes les dépendances. Vérifiez que tous les fichiers du plugin sont présents.</p>
-            <p>Consultez les logs WordPress pour plus de détails.</p>
-        </div>';
-    }
-    
-    /**
-     * Affichage des erreurs critiques
-     * 
-     * @since 1.1.1
-     * @return void
-     */
-    public function show_critical_error() {
-        $errors = implode('<br>', $this->init_errors);
-        echo '<div class="notice notice-error">
-            <p><strong>Erreur critique Iris Process</strong> : Le plugin n\'a pas pu s\'initialiser correctement.</p>
-            <details>
-                <summary>Détails des erreurs</summary>
-                <p>' . esc_html($errors) . '</p>
-            </details>
-        </div>';
-    }
-    
-    /**
-     * Vérifier si le plugin est correctement initialisé
-     * 
-     * @since 1.1.1
-     * @return bool
-     */
-    public function is_initialized() {
-        return $this->initialized;
-    }
-}
-
-// =============================================================================
-// 4. FONCTIONS DE FALLBACK (si les fichiers includes n'existent pas)
-// =============================================================================
-
-/**
- * Fallback pour iris_maybe_update_database
- */
-if (!function_exists('iris_maybe_update_database')) {
-    function iris_maybe_update_database() {
-        $current_version = get_option('iris_process_db_version', '1.0.0');
-        $plugin_version = IRIS_PLUGIN_VERSION;
-        
-        if (version_compare($current_version, $plugin_version, '<')) {
-            if (function_exists('iris_create_tables')) {
-                iris_create_tables();
-            }
-            update_option('iris_process_db_version', $plugin_version);
-            iris_log_error("Base de données mise à jour vers la version $plugin_version");
+        $js_file = IRIS_PLUGIN_PATH . 'assets/iris-admin.js';
+        if (file_exists($js_file)) {
+            wp_enqueue_script('iris-admin', IRIS_PLUGIN_URL . 'assets/iris-admin.js', array('jquery'), IRIS_PLUGIN_VERSION, true);
         }
     }
 }
 
 /**
- * Fallback pour iris_add_custom_capabilities
- */
-if (!function_exists('iris_add_custom_capabilities')) {
-    function iris_add_custom_capabilities() {
-        $role = get_role('subscriber');
-        if ($role) {
-            $role->add_cap('iris_process_images');
-        }
-        
-        $role = get_role('customer');
-        if ($role) {
-            $role->add_cap('iris_process_images');
-        }
-    }
-}
-
-/**
- * Fallback pour iris_cleanup_old_jobs
- */
-if (!function_exists('iris_cleanup_old_jobs')) {
-    function iris_cleanup_old_jobs() {
-        global $wpdb;
-        
-        // Supprimer les jobs de plus de 30 jours
-        $table_jobs = $wpdb->prefix . 'iris_processing_jobs';
-        if ($wpdb->get_var("SHOW TABLES LIKE '{$table_jobs}'") === $table_jobs) {
-            $wpdb->query($wpdb->prepare(
-                "DELETE FROM {$table_jobs} WHERE created_at < DATE_SUB(NOW(), INTERVAL %d DAY)",
-                30
-            ));
-        }
-        
-        // Nettoyer les fichiers temporaires
-        $upload_dir = wp_upload_dir();
-        $iris_dir = $upload_dir['basedir'] . '/iris-process/';
-        
-        if (is_dir($iris_dir)) {
-            $files = glob($iris_dir . '*');
-            $now = time();
-            
-            foreach ($files as $file) {
-                if (is_file($file) && ($now - filemtime($file)) > (7 * 24 * 3600)) { // 7 jours
-                    unlink($file);
-                }
-            }
-        }
-    }
-}
-
-/**
- * Fallback pour iris_handle_surecart_order
- */
-if (!function_exists('iris_handle_surecart_order')) {
-    function iris_handle_surecart_order($order) {
-        iris_log_error('Commande SureCart reçue: ' . json_encode($order));
-        
-        // Logique basique d'attribution de tokens
-        if (isset($order['customer']['id']) && isset($order['line_items'])) {
-            $customer_id = $order['customer']['id'];
-            
-            // Rechercher l'utilisateur WordPress correspondant
-            $user = get_user_by('email', $order['customer']['email']);
-            if ($user && class_exists('Token_Manager')) {
-                foreach ($order['line_items'] as $item) {
-                    if (strpos($item['price']['name'], 'token') !== false) {
-                        $tokens = intval($item['quantity']);
-                        Token_Manager::add_tokens($user->ID, $tokens, $order['id']);
-                    }
-                }
-            }
-        }
-    }
-}
-
-/**
- * Fallback pour iris_send_completion_email
- */
-if (!function_exists('iris_send_completion_email')) {
-    function iris_send_completion_email($user_id, $job_id, $status) {
-        $user = get_user_by('id', $user_id);
-        if (!$user) {
-            return;
-        }
-        
-        $subject = 'Iris Process - Traitement terminé';
-        $message = "Bonjour {$user->display_name},\n\n";
-        $message .= "Votre traitement d'image (Job: {$job_id}) est terminé.\n";
-        $message .= "Statut: {$status}\n\n";
-        
-        if ($status === 'completed') {
-            $message .= "Vous pouvez télécharger vos images traitées depuis votre espace membre.\n";
-        } else {
-            $message .= "Une erreur s'est produite lors du traitement. Contactez le support si nécessaire.\n";
-        }
-        
-        $message .= "\nCordialement,\nL'équipe Iris Process";
-        
-        wp_mail($user->user_email, $subject, $message);
-    }
-}
-
-// Fallback pour Token_Manager si la classe n'existe pas
-if (!class_exists('Token_Manager')) {
-    class Token_Manager {
-        public static function get_user_balance($user_id) {
-            return 0;
-        }
-        
-        public static function add_tokens($user_id, $amount, $order_id = null) {
-            return false;
-        }
-        
-        public static function use_token($user_id, $image_process_id) {
-            return false;
-        }
-        
-        public static function get_user_transactions($user_id, $limit = 10) {
-            return array();
-        }
-    }
-}
-
-/**
- * Shortcode principal si la fonction n'existe pas dans les includes
+ * Shortcode principal de fallback
  */
 if (!function_exists('iris_upload_zone_shortcode')) {
     function iris_upload_zone_shortcode($atts) {
@@ -900,8 +551,8 @@ if (!function_exists('iris_upload_zone_shortcode')) {
             </div>
             
             <div class="iris-upload-zone">
-                <p>Zone d'upload Iris Process</p>
-                <p style="color: orange;">Plugin en cours de chargement - Certaines fonctionnalités peuvent être limitées.</p>
+                <p>Zone d'upload Iris Process (mode sécurisé)</p>
+                <p>Plugin en cours de chargement... Vérifiez que tous les fichiers sont présents.</p>
             </div>
         </div>
         <?php
@@ -912,43 +563,51 @@ if (!function_exists('iris_upload_zone_shortcode')) {
 }
 
 // =============================================================================
-// 5. INITIALISATION DU PLUGIN
+// 5. INITIALISATION SÉCURISÉE DU PLUGIN
 // =============================================================================
 
+// Test de compatibilité PHP avant tout
+if (version_compare(PHP_VERSION, '7.4', '<')) {
+    add_action('admin_notices', function() {
+        echo '<div class="notice notice-error"><p><strong>Iris Process:</strong> Nécessite PHP 7.4 ou supérieur. Version actuelle: ' . PHP_VERSION . '</p></div>';
+    });
+    return;
+}
+
 // Initialiser le plugin seulement si WordPress est complètement chargé
-if (defined('ABSPATH')) {
-    // Attendre que WordPress soit prêt
-    add_action('plugins_loaded', function() {
-        IrisProcessTokens::get_instance();
-    }, 1);
-}
-
-/**
- * Fonction de diagnostic pour le débogage
- * 
- * @since 1.1.1
- * @return array État du plugin
- */
-function iris_get_plugin_status() {
-    $instance = iris_process_tokens();
+if (defined('ABSPATH') && !class_exists('IrisProcessTokens_Already_Loaded')) {
     
-    return array(
-        'version' => IRIS_PLUGIN_VERSION,
-        'initialized' => $instance ? $instance->is_initialized() : false,
-        'constants_defined' => defined('IRIS_PLUGIN_PATH') && defined('IRIS_API_URL'),
-        'wordpress_ready' => did_action('init') > 0,
-        'dependencies_loaded' => class_exists('Token_Manager'),
-    );
+    // Marquer comme chargé pour éviter les doubles chargements
+    class IrisProcessTokens_Already_Loaded {}
+    
+    // Initialiser le plugin
+    $iris_process_instance = IrisProcessTokens::get_instance();
+    
+    iris_log_error('Plugin Iris Process v' . IRIS_PLUGIN_VERSION . ' initialisé avec succès');
+    
+    // Déplacement des hooks d'activation/désactivation ici (contexte global)
+    register_activation_hook(__FILE__, array('IrisProcessTokens', 'activate_static'));
+    register_deactivation_hook(__FILE__, array('IrisProcessTokens', 'deactivate_static'));
+    
+} else {
+    iris_log_error('IRIS WARNING: Plugin déjà chargé ou WordPress non initialisé');
+}
+
+// Ajout des méthodes statiques pour l'activation/désactivation
+if (!method_exists('IrisProcessTokens', 'activate_static')) {
+    class_alias('IrisProcessTokens', 'IrisProcessTokens_Activation_Helper');
+    IrisProcessTokens_Activation_Helper::add_static_activation_methods();
 }
 
 /**
- * FIN DU FICHIER PRINCIPAL
+ * FIN DU FICHIER PRINCIPAL SÉCURISÉ
  * 
  * Ce fichier corrigé :
- * - Gère l'initialisation de manière sécurisée
- * - Charge les dépendances avec gestion d'erreur
- * - Initialise les hooks au bon moment
- * - Fournit des fallbacks complets
- * - Inclut un système de diagnostic
+ * - Vérifie l'existence des fichiers avant chargement
+ * - Teste les classes avant instanciation  
+ * - Initialise les hooks APRÈS le chargement des fonctions
+ * - Fournit des fallbacks fonctionnels
+ * - Gère les erreurs de manière gracieuse
+ * - Évite les plantages fataux
  */
 ?>

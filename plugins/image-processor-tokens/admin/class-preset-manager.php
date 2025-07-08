@@ -135,38 +135,29 @@ class Iris_Preset_Manager {
     }
     
     public function get_all_presets() {
+        global $wpdb;
+        $table_presets = $wpdb->prefix . 'iris_presets';
         $presets = array();
-        
-        // Presets par défaut
-        $default_presets = glob($this->presets_dir . '*.json');
-        foreach ($default_presets as $preset_file) {
-            if (strpos($preset_file, '/uploads/') === false) {
-                $presets[] = $this->parse_preset_file($preset_file, 'default');
+        $results = $wpdb->get_results("SELECT * FROM $table_presets ORDER BY is_default DESC, photo_type ASC", ARRAY_A);
+        foreach ($results as $row) {
+            $file_path = $this->uploads_dir . $row['file_name'];
+            if (!file_exists($file_path)) {
+                $file_path = $this->presets_dir . $row['file_name'];
             }
+            $presets[] = array(
+                'id' => pathinfo($row['file_name'], PATHINFO_FILENAME),
+                'name' => $row['preset_name'],
+                'type' => 'uploaded',
+                'file_path' => $file_path,
+                'camera_models' => array(), // Optionnel, à compléter si besoin
+                'created_date' => $row['created_at'],
+                'description' => $row['description'],
+                'author' => '',
+                'photo_type' => $row['photo_type'],
+                'is_default' => $row['is_default']
+            );
         }
-        
-        // Presets uploadés
-        $uploaded_presets = glob($this->uploads_dir . '*.json');
-        foreach ($uploaded_presets as $preset_file) {
-            $presets[] = $this->parse_preset_file($preset_file, 'uploaded');
-        }
-        
         return $presets;
-    }
-    
-    private function parse_preset_file($file_path, $type) {
-        $content = json_decode(file_get_contents($file_path), true);
-        
-        return array(
-            'id' => basename($file_path, '.json'),
-            'name' => $content['name'] ?? basename($file_path, '.json'),
-            'type' => $type,
-            'file_path' => $file_path,
-            'camera_models' => $content['camera_models'] ?? array(),
-            'created_date' => date('Y-m-d H:i:s', filemtime($file_path)),
-            'description' => $content['description'] ?? '',
-            'author' => $content['author'] ?? 'Inconnu'
-        );
     }
     
     public function handle_preset_upload() {
@@ -252,26 +243,24 @@ class Iris_Preset_Manager {
     }
     
     private function process_json_upload($file) {
+        global $wpdb;
+        $table_presets = $wpdb->prefix . 'iris_presets';
         // Validation du JSON
         $json_content = file_get_contents($file['tmp_name']);
         $preset_data = json_decode($json_content, true);
-        
         if (json_last_error() !== JSON_ERROR_NONE) {
             throw new Exception('Fichier JSON invalide: ' . json_last_error_msg());
         }
-        
         // Validation de la structure
         if (!isset($preset_data['name']) || !isset($preset_data['raw_params'])) {
             throw new Exception('Structure JSON invalide. Vérifiez que le preset contient "name" et "raw_params"');
         }
-        
         // Génération du nom de fichier
         $preset_name = sanitize_file_name(
             isset($_POST['preset_name']) && !empty($_POST['preset_name']) 
                 ? $_POST['preset_name'] 
                 : pathinfo($file['name'], PATHINFO_FILENAME)
         );
-        
         // Ajout des métadonnées d'upload
         $preset_data['upload_info'] = array(
             'original_file' => $file['name'],
@@ -279,11 +268,27 @@ class Iris_Preset_Manager {
             'upload_date' => current_time('mysql'),
             'source' => 'json_preset'
         );
-        
         // Sauvegarde
         $json_path = $this->uploads_dir . $preset_name . '.json';
         file_put_contents($json_path, json_encode($preset_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-        
+        // Récupération des champs du formulaire
+        $photo_type = isset($_POST['photo_type']) ? sanitize_text_field($_POST['photo_type']) : '';
+        $is_default = isset($_POST['is_default']) && $_POST['is_default'] == '1' ? 1 : 0;
+        $description = isset($_POST['description']) ? sanitize_textarea_field($_POST['description']) : '';
+        // Si ce preset est par défaut, retirer le flag par défaut des autres
+        if ($is_default) {
+            $wpdb->query("UPDATE $table_presets SET is_default = 0 WHERE is_default = 1");
+        }
+        // Insertion dans la table
+        $wpdb->insert($table_presets, array(
+            'file_name' => $preset_name . '.json',
+            'photo_type' => $photo_type,
+            'is_default' => $is_default,
+            'preset_name' => $preset_data['name'],
+            'description' => $description,
+            'created_at' => current_time('mysql'),
+            'updated_at' => current_time('mysql')
+        ));
         return array(
             'preset_id' => $preset_name,
             'preset_name' => $preset_data['name'],
@@ -293,21 +298,25 @@ class Iris_Preset_Manager {
     }
     
     public function handle_preset_delete() {
+        global $wpdb;
+        $table_presets = $wpdb->prefix . 'iris_presets';
         check_ajax_referer('iris_preset_nonce', 'nonce');
-        
         if (!current_user_can('manage_options')) {
             wp_send_json_error('Permissions insuffisantes');
         }
-        
         $preset_id = sanitize_text_field($_POST['preset_id']);
         $preset_file = $this->uploads_dir . $preset_id . '.json';
-        
+        if (!file_exists($preset_file)) {
+            $preset_file = $this->presets_dir . $preset_id . '.json';
+        }
         if (!file_exists($preset_file)) {
             wp_send_json_error('Preset non trouvé');
         }
-        
         // Suppression du fichier
-        if (unlink($preset_file)) {
+        $deleted = unlink($preset_file);
+        // Suppression de l'entrée dans la table
+        $wpdb->delete($table_presets, array('file_name' => $preset_id . '.json'));
+        if ($deleted) {
             wp_send_json_success('Preset supprimé avec succès');
         } else {
             wp_send_json_error('Erreur lors de la suppression');

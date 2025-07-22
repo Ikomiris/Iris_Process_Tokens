@@ -14,6 +14,7 @@ jQuery(document).ready(function($) {
     var $tokenBalance = $('#token-balance');
     
     var selectedFile = null;
+    var isUploading = false;
     
     console.log('Éléments trouvés:', {
         dropZone: $dropZone.length,
@@ -127,11 +128,28 @@ jQuery(document).ready(function($) {
     if ($uploadForm.length > 0) {
         $uploadForm.on('submit', function(e) {
             e.preventDefault();
-            
+            if (isUploading) {
+                // Désactive le bouton et affiche un message visuel si besoin
+                if ($uploadBtn.length > 0) {
+                    $uploadBtn.prop('disabled', true);
+                    $uploadBtn.find('.iris-btn-text').hide();
+                    $uploadBtn.find('.iris-btn-loading').show();
+                }
+                console.warn('Upload déjà en cours, soumission ignorée.');
+                return false;
+            }
             if (!selectedFile) {
                 alert('Veuillez sélectionner un fichier');
                 return false;
             }
+            isUploading = true;
+            if ($uploadBtn.length > 0) {
+                $uploadBtn.prop('disabled', true);
+                $uploadBtn.find('.iris-btn-text').hide();
+                $uploadBtn.find('.iris-btn-loading').show();
+            }
+            // Nettoyer les anciens messages d'erreur
+            if ($result.length > 0) $result.html('').hide();
             
             console.log('Début de l\'upload pour:', selectedFile.name);
             
@@ -143,11 +161,11 @@ jQuery(document).ready(function($) {
             }
             
             // Affichage du loading
-            if ($uploadBtn.length > 0) {
-                $uploadBtn.prop('disabled', true);
-                $uploadBtn.find('.iris-btn-text').hide();
-                $uploadBtn.find('.iris-btn-loading').show();
-            }
+            // if ($uploadBtn.length > 0) { // This block is now redundant due to the new_code
+            //     $uploadBtn.prop('disabled', true);
+            //     $uploadBtn.find('.iris-btn-text').hide();
+            //     $uploadBtn.find('.iris-btn-loading').show();
+            // }
             
             // Préparer FormData
             var formData = new FormData();
@@ -170,15 +188,12 @@ jQuery(document).ready(function($) {
                     
                     if (response && response.success) {
                         var successHtml = '<div class="iris-success">' +
-                            '<h4>✅ ' + (response.data.message || 'Upload réussi') + '</h4>' +
-                            '<p>Jetons restants : ' + (response.data.remaining_tokens || '?') + '</p>' +
-                            '<p>ID de traitement : ' + (response.data.process_id || '?') + '</p>' +
+                            '<h4>✅ ' + (response.data.message || 'Votre fichier a été envoyé avec succès, il est en cours de traitement...') + '</h4>' +
                             '</div>';
                         
                         if ($result.length > 0) $result.html(successHtml).show();
-                        if ($tokenBalance.length > 0) $tokenBalance.text(response.data.remaining_tokens || 0);
                         
-                        // Réinitialiser le formulaire
+                        // Réinitialiser le formulaire UNIQUEMENT en cas de succès
                         if ($removeBtn.length > 0) $removeBtn.trigger('click');
                         
                         // Recharger après 3 secondes pour voir l'historique
@@ -187,7 +202,7 @@ jQuery(document).ready(function($) {
                         }, 3000);
                         
                     } else {
-                        var errorMsg = response && response.data ? response.data : 'Erreur inconnue';
+                        var errorMsg = (response && response.data && response.data.message) ? response.data.message : (response && response.data ? response.data : 'Erreur inconnue');
                         var errorHtml = '<div class="iris-error">' +
                             '<h4>❌ Erreur</h4>' +
                             '<p>' + errorMsg + '</p>' +
@@ -218,6 +233,7 @@ jQuery(document).ready(function($) {
                         $uploadBtn.find('.iris-btn-text').show();
                         $uploadBtn.find('.iris-btn-loading').hide();
                     }
+                    isUploading = false;
                 }
             });
             

@@ -40,15 +40,6 @@ function iris_add_admin_menu() {
     
     add_submenu_page(
         'iris-process',
-        'Configuration',
-        'Configuration',
-        'manage_options',
-        'iris-config',
-        'iris_config_admin_page'
-    );
-    
-    add_submenu_page(
-        'iris-process',
         'Jobs',
         'Jobs',
         'manage_options',
@@ -79,7 +70,9 @@ function iris_presets_admin_page() {
     // Traitement de la suppression
     if (isset($_POST['delete_preset']) && wp_verify_nonce($_POST['delete_nonce'], 'iris_preset_delete')) {
         $preset_id = intval($_POST['preset_id']);
-        if (Preset_Manager::delete($preset_id)) {
+        if (class_exists('Preset_Manager')) {
+            $preset_manager = new Preset_Manager();
+            $preset_manager->delete_preset($preset_id);
             echo '<div class="notice notice-success"><p>Preset supprimé avec succès !</p></div>';
         } else {
             echo '<div class="notice notice-error"><p>Erreur lors de la suppression.</p></div>';
@@ -87,7 +80,7 @@ function iris_presets_admin_page() {
     }
     
     // Récupérer tous les presets
-    $table_presets = $wpdb->prefix . 'iris_admin_presets';
+    $table_presets = $wpdb->prefix . 'iris_presets';
     $presets = $wpdb->get_results("SELECT * FROM $table_presets ORDER BY created_at DESC");
     
     ?>
@@ -123,6 +116,29 @@ function iris_presets_admin_page() {
                         </td>
                     </tr>
                     <tr>
+                        <th scope="row">Type de photo</th>
+                        <td>
+                            <select name="photo_type" required>
+                                <option value="">-- Sélectionner --</option>
+                                <option value="cr3">CR3</option>
+                                <option value="cr2">CR2</option>
+                                <option value="nef">NEF</option>
+                                <option value="arw">ARW</option>
+                                <option value="jpg">JPG</option>
+                                <option value="jpeg">JPEG</option>
+                                <option value="tif">TIF</option>
+                                <option value="tiff">TIFF</option>
+                                <option value="png">PNG</option>
+                                <option value="dng">DNG</option>
+                                <option value="raw">RAW</option>
+                                <option value="orf">ORF</option>
+                                <option value="raf">RAF</option>
+                                <option value="rw2">RW2</option>
+                            </select>
+                            <p class="description">Extension/type de fichier associé à ce preset (obligatoire).</p>
+                        </td>
+                    </tr>
+                    <tr>
                         <th scope="row">Preset par défaut</th>
                         <td>
                             <label>
@@ -153,9 +169,8 @@ function iris_presets_admin_page() {
                         <tr>
                             <th>Nom</th>
                             <th>Description</th>
-                            <th>Version</th>
-                            <th>Créé par</th>
-                            <th>Utilisations</th>
+                            <th>Type de photo</th>
+                            <th>Date d'ajout</th>
                             <th>Défaut</th>
                             <th>Actions</th>
                         </tr>
@@ -167,29 +182,24 @@ function iris_presets_admin_page() {
                             $created_with = isset($preset_data['created_with']) ? $preset_data['created_with'] : 'Inconnu';
                         ?>
                         <tr>
-                            <td><strong><?php echo esc_html($preset->preset_name); ?></strong></td>
-                            <td><?php echo esc_html($preset->description ?: 'Aucune description'); ?></td>
+                            <td><strong><?php
+                                echo esc_html(
+                                    $preset->preset_name
+                                    ?: (isset($preset->file_name) ? pathinfo($preset->file_name, PATHINFO_FILENAME) : '(sans nom)')
+                                    ?: '(sans nom)'
+                                );
+                            ?></strong></td>
+                            <td><?php echo esc_html($preset->description ?? '(aucune description)'); ?></td>
+                            <td><?php echo esc_html($preset->photo_type ?? ''); ?></td>
+                            <td><?php echo !empty($preset->created_at) ? esc_html(date('d/m/Y H:i', strtotime($preset->created_at))) : ''; ?></td>
                             <td>
-                                <span class="iris-version-badge">v<?php echo esc_html($version); ?></span><br>
-                                <small><?php echo esc_html($created_with); ?></small>
-                            </td>
-                            <td><?php echo esc_html($preset->created_by); ?></td>
-                            <td><span class="usage-count"><?php echo intval($preset->usage_count); ?></span></td>
-                            <td>
-                               <?php if ($preset->is_default): ?>
+                               <?php if (!empty($preset->is_default)): ?>
                                    <span class="dashicons dashicons-yes-alt" style="color: green;"></span>
                                <?php else: ?>
                                    <span class="dashicons dashicons-minus" style="color: #ccc;"></span>
                                <?php endif; ?>
                            </td>
                            <td>
-                               <button class="button button-small view-preset" 
-                                       data-preset-id="<?php echo $preset->id; ?>"
-                                       data-preset='<?php echo esc_attr(json_encode($preset_data, JSON_PRETTY_PRINT)); ?>'>
-                                   👁️ Voir
-                               </button>
-                               
-                               <?php if (!$preset->is_default): ?>
                                <form method="post" style="display: inline;">
                                    <?php wp_nonce_field('iris_preset_delete', 'delete_nonce'); ?>
                                    <input type="hidden" name="preset_id" value="<?php echo $preset->id; ?>" />
@@ -197,9 +207,8 @@ function iris_presets_admin_page() {
                                           value="🗑️ Supprimer" 
                                           onclick="return confirm('Êtes-vous sûr de vouloir supprimer ce preset ?');" />
                                </form>
-                               <?php endif; ?>
                            </td>
-                       </tr>
+                        </tr>
                        <?php endforeach; ?>
                    </tbody>
                </table>
@@ -338,7 +347,6 @@ function iris_admin_page() {
    // Statistiques générales
    $table_tokens = $wpdb->prefix . 'iris_user_tokens';
    $table_jobs = $wpdb->prefix . 'iris_processing_jobs';
-   $table_presets = $wpdb->prefix . 'iris_admin_presets'; // NOUVEAU v1.1.0
    
    $total_users = $wpdb->get_var("SELECT COUNT(*) FROM $table_tokens");
    $total_jobs = $wpdb->get_var("SELECT COUNT(*) FROM $table_jobs");
@@ -347,14 +355,12 @@ function iris_admin_page() {
    $failed_jobs = $wpdb->get_var("SELECT COUNT(*) FROM $table_jobs WHERE status = 'failed'");
    $total_tokens_used = $wpdb->get_var("SELECT SUM(total_used) FROM $table_tokens");
    $total_tokens_purchased = $wpdb->get_var("SELECT SUM(total_purchased) FROM $table_tokens");
-   $total_presets = $wpdb->get_var("SELECT COUNT(*) FROM $table_presets"); // NOUVEAU v1.1.0
    
    // Jobs récents avec presets (MODIFIÉ v1.1.0)
    $recent_jobs = $wpdb->get_results("
-       SELECT j.*, u.display_name, u.user_email, p.preset_name
+       SELECT j.*, u.display_name, u.user_email
        FROM $table_jobs j 
        JOIN {$wpdb->users} u ON j.user_id = u.ID 
-       LEFT JOIN $table_presets p ON j.preset_id = p.id
        ORDER BY j.created_at DESC 
        LIMIT 10
    ");
@@ -435,7 +441,6 @@ function iris_admin_page() {
            <div class="iris-admin-section">
                <h2>API Status</h2>
                <div class="iris-api-status">
-                   <p><strong>URL API:</strong> <?php echo IRIS_API_URL; ?></p>
                    <button type="button" id="test-api" class="button">Tester l'API</button>
                    <div id="api-result"></div>
                </div>
@@ -567,13 +572,11 @@ function iris_jobs_admin_page() {
    global $wpdb;
    
    $table_jobs = $wpdb->prefix . 'iris_processing_jobs';
-   $table_presets = $wpdb->prefix . 'iris_admin_presets';
    
    $jobs = $wpdb->get_results("
-       SELECT j.*, u.display_name, u.user_email, p.preset_name
+       SELECT j.*, u.display_name, u.user_email
        FROM $table_jobs j 
        JOIN {$wpdb->users} u ON j.user_id = u.ID 
-       LEFT JOIN $table_presets p ON j.preset_id = p.id
        ORDER BY j.created_at DESC 
        LIMIT 50
    ");
@@ -633,14 +636,12 @@ function iris_config_admin_page() {
    if (isset($_POST['submit'])) {
        check_admin_referer('iris_config_save');
        
-       update_option('iris_api_url', sanitize_url($_POST['api_url']));
        update_option('iris_max_file_size', intval($_POST['max_file_size']));
        update_option('iris_email_notifications', isset($_POST['email_notifications']));
        
        echo '<div class="notice notice-success"><p>Configuration sauvegardée !</p></div>';
    }
    
-   $api_url = get_option('iris_api_url', IRIS_API_URL);
    $max_file_size = get_option('iris_max_file_size', 100);
    $email_notifications = get_option('iris_email_notifications', true);
    
@@ -652,13 +653,6 @@ function iris_config_admin_page() {
            <?php wp_nonce_field('iris_config_save'); ?>
            
            <table class="form-table">
-               <tr>
-                   <th scope="row">URL de l'API Python</th>
-                   <td>
-                       <input type="url" name="api_url" value="<?php echo esc_attr($api_url); ?>" class="regular-text" />
-                       <p class="description">URL complète de votre API Python.</p>
-                   </td>
-               </tr>
                
                <tr>
                    <th scope="row">Taille max fichiers (MB)</th>

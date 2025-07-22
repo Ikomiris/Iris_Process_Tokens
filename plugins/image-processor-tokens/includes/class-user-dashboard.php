@@ -773,12 +773,10 @@ class User_Dashboard {
         global $wpdb;
         
         $table_jobs = $wpdb->prefix . 'iris_processing_jobs';
-        $table_presets = $wpdb->prefix . 'iris_admin_presets';
         
         $jobs = $wpdb->get_results($wpdb->prepare(
-            "SELECT j.*, p.preset_name 
+            "SELECT j.* 
              FROM $table_jobs j 
-             LEFT JOIN $table_presets p ON j.preset_id = p.id
              WHERE j.user_id = %d 
              ORDER BY j.created_at DESC 
              LIMIT %d",

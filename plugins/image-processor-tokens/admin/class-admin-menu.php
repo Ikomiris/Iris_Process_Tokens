@@ -11,32 +11,57 @@ class Iris_Process_Admin_Menu {
     }
     
     public function add_menus() {
+        // Menu parent : 'Iris Process'
         add_menu_page(
-            'Iris Process',
-            'Iris Process',
+            'Iris Process - Tableau de bord', // Titre de la page
+            'Iris Process', // Label du menu parent
             'manage_options',
-            'iris-process',
+            'iris-dashboard', // Slug du menu parent
             array($this, 'main_page'),
             'dashicons-images-alt2',
             30
         );
-        
+        // Premier sous-menu : 'Tableau de bord' (même slug que le parent)
         add_submenu_page(
-            'iris-process',
+            'iris-dashboard', // Parent slug
+            'Iris Process - Tableau de bord', // Titre de la page
+            'Tableau de bord', // Label du sous-menu
+            'manage_options',
+            'iris-dashboard', // Slug identique au parent
+            array($this, 'main_page')
+        );
+        // Les autres sous-menus restent inchangés
+        add_submenu_page(
+            'iris-dashboard',
             'Configuration',
             'Configuration',
             'manage_options',
             'iris-config',
             array($this, 'config_page')
         );
-        
         add_submenu_page(
-            'iris-process',
+            'iris-dashboard',
+            'Presets JSON',
+            'Presets',
+            'manage_options',
+            'iris-presets',
+            'iris_presets_admin_page'
+        );
+        add_submenu_page(
+            'iris-dashboard',
             'Jobs',
             'Jobs',
             'manage_options',
             'iris-jobs',
             array($this, 'jobs_page')
+        );
+        add_submenu_page(
+            'iris-dashboard',
+            'Aide',
+            'Aide',
+            'manage_options',
+            'iris-help',
+            array($this, 'help_page')
         );
     }
     
@@ -171,41 +196,102 @@ class Iris_Process_Admin_Menu {
         // Sauvegarde des paramètres
         if (isset($_POST['submit'])) {
             check_admin_referer('iris_config_save');
-            
-            update_option('iris_api_url', sanitize_url($_POST['api_url']));
+
+            update_option('iris_s3_access_key', sanitize_text_field($_POST['s3_access_key']));
+            update_option('iris_s3_secret_key', sanitize_text_field($_POST['s3_secret_key']));
+            update_option('iris_s3_region', sanitize_text_field($_POST['s3_region']));
+            update_option('iris_s3_bucket', sanitize_text_field($_POST['s3_bucket']));
+            update_option('iris_s3_output_access_key', sanitize_text_field($_POST['s3_output_access_key']));
+            update_option('iris_s3_output_secret_key', sanitize_text_field($_POST['s3_output_secret_key']));
+            update_option('iris_s3_output_region', sanitize_text_field($_POST['s3_output_region']));
+            update_option('iris_s3_output_bucket', sanitize_text_field($_POST['s3_output_bucket']));
             update_option('iris_max_file_size', intval($_POST['max_file_size']));
             update_option('iris_email_notifications', isset($_POST['email_notifications']));
-            
+
             echo '<div class="notice notice-success"><p>Configuration sauvegardée !</p></div>';
         }
-        
-        $api_url = get_option('iris_api_url', IRIS_API_URL);
+
+        $s3_access_key = get_option('iris_s3_access_key', '');
+        $s3_secret_key = get_option('iris_s3_secret_key', '');
+        $s3_region = get_option('iris_s3_region', 'eu-west-1');
+        $s3_bucket = get_option('iris_s3_bucket', 'ikomiris-extractiris-source');
+        $s3_output_access_key = get_option('iris_s3_output_access_key', '');
+        $s3_output_secret_key = get_option('iris_s3_output_secret_key', '');
+        $s3_output_region = get_option('iris_s3_output_region', 'eu-west-1');
+        $s3_output_bucket = get_option('iris_s3_output_bucket', 'ikomiris-extractiris-outputs');
         $max_file_size = get_option('iris_max_file_size', 100);
         $email_notifications = get_option('iris_email_notifications', true);
-        
+
         ?>
         <div class="wrap">
             <h1>Configuration Iris Process</h1>
-            
             <form method="post" action="">
                 <?php wp_nonce_field('iris_config_save'); ?>
-                
                 <table class="form-table">
                     <tr>
-                        <th scope="row">URL de l'API Python</th>
+                        <th colspan="2"><h3>Bucket S3 Source (upload)</h3></th>
+                    </tr>
+                    <tr>
+                        <th scope="row">Clé d'accès AWS (Access Key ID)</th>
                         <td>
-                            <input type="url" name="api_url" value="<?php echo esc_attr($api_url); ?>" class="regular-text" />
-                            <p class="description">URL complète de votre API Python.</p>
+                            <input type="text" name="s3_access_key" value="<?php echo esc_attr($s3_access_key); ?>" class="regular-text" />
                         </td>
                     </tr>
-                    
+                    <tr>
+                        <th scope="row">Clé secrète AWS (Secret Access Key)</th>
+                        <td>
+                            <input type="password" name="s3_secret_key" value="<?php echo esc_attr($s3_secret_key); ?>" class="regular-text" autocomplete="new-password" />
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Région AWS</th>
+                        <td>
+                            <input type="text" name="s3_region" value="<?php echo esc_attr($s3_region); ?>" class="regular-text" />
+                            <p class="description">Exemple : eu-west-1</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Nom du bucket S3</th>
+                        <td>
+                            <input type="text" name="s3_bucket" value="<?php echo esc_attr($s3_bucket); ?>" class="regular-text" />
+                        </td>
+                    </tr>
+                    <tr><td colspan="2"><hr></td></tr>
+                    <tr>
+                        <th colspan="2"><h3>Bucket S3 Output (photos traitées)</h3></th>
+                    </tr>
+                    <tr>
+                        <th scope="row">Clé d'accès AWS (Access Key ID)</th>
+                        <td>
+                            <input type="text" name="s3_output_access_key" value="<?php echo esc_attr($s3_output_access_key); ?>" class="regular-text" />
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Clé secrète AWS (Secret Access Key)</th>
+                        <td>
+                            <input type="password" name="s3_output_secret_key" value="<?php echo esc_attr($s3_output_secret_key); ?>" class="regular-text" autocomplete="new-password" />
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Région AWS</th>
+                        <td>
+                            <input type="text" name="s3_output_region" value="<?php echo esc_attr($s3_output_region); ?>" class="regular-text" />
+                            <p class="description">Exemple : eu-west-1</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Nom du bucket S3</th>
+                        <td>
+                            <input type="text" name="s3_output_bucket" value="<?php echo esc_attr($s3_output_bucket); ?>" class="regular-text" />
+                        </td>
+                    </tr>
+                    <tr><td colspan="2"><hr></td></tr>
                     <tr>
                         <th scope="row">Taille max fichiers (MB)</th>
                         <td>
                             <input type="number" name="max_file_size" value="<?php echo esc_attr($max_file_size); ?>" min="1" max="500" />
                         </td>
                     </tr>
-                    
                     <tr>
                         <th scope="row">Notifications email</th>
                         <td>
@@ -216,7 +302,6 @@ class Iris_Process_Admin_Menu {
                         </td>
                     </tr>
                 </table>
-                
                 <?php submit_button('Sauvegarder'); ?>
             </form>
         </div>
@@ -307,6 +392,60 @@ class Iris_Process_Admin_Menu {
             margin: 15px 0;
         }
         </style>';
+    }
+    
+    /**
+     * Page d'aide listant tous les shortcodes disponibles
+     */
+    public function help_page() {
+        ?>
+        <div class="wrap">
+            <h1>📖 Aide & Shortcodes Iris Process</h1>
+            <p>Voici la liste des shortcodes disponibles pour ce plugin, à utiliser dans vos pages ou articles WordPress :</p>
+            <table class="widefat fixed striped">
+                <thead>
+                    <tr>
+                        <th>Shortcode</th>
+                        <th>Explication</th>
+                        <th>Exemple</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>[iris_upload_zone]</code></td>
+                        <td>Affiche la zone d'upload sécurisée pour traiter une image (consomme 1 jeton).</td>
+                        <td><code>[iris_upload_zone]</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>[user_token_balance]</code></td>
+                        <td>Affiche le solde de jetons de l'utilisateur connecté. Options : <code>style</code> (card/simple/inline), <code>show_actions</code> (true/false).</td>
+                        <td><code>[user_token_balance style="card" show_actions="true"]</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>[token_history]</code></td>
+                        <td>Affiche l'historique des transactions de jetons de l'utilisateur. Options : <code>limit</code>, <code>show_pagination</code>, <code>show_filters</code>.</td>
+                        <td><code>[token_history limit="10" show_pagination="true" show_filters="true"]</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>[iris_process_page]</code></td>
+                        <td>Affiche la page complète de traitement d'image avec sélection de preset et suivi du job.</td>
+                        <td><code>[iris_process_page]</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>[iris_user_dashboard]</code></td>
+                        <td>Affiche le tableau de bord utilisateur complet (solde, stats, jobs en cours, actions rapides).</td>
+                        <td><code>[iris_user_dashboard layout="grid"]</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>[iris_user_stats]</code></td>
+                        <td>Affiche les statistiques détaillées de l'utilisateur connecté (jetons, jobs, temps moyen, etc).</td>
+                        <td><code>[iris_user_stats]</code></td>
+                    </tr>
+                </tbody>
+            </table>
+            <p>Pour toute question ou problème, contactez le support via <a href="https://iris4pro.com" target="_blank">iris4pro.com</a>.</p>
+        </div>
+        <?php
     }
     
     private function get_admin_styles() {

@@ -100,33 +100,6 @@ class Iris_Process_Rest_Api {
             'permission_callback' => '__return_true'
         ));
         
-        // Route de callback depuis l'API Python
-        register_rest_route($this->namespace, '/callback', array(
-            'methods' => 'POST',
-            'callback' => array($this, 'handle_callback'),
-            'permission_callback' => array($this, 'verify_api_callback'),
-            'args' => array(
-                'job_id' => array(
-                    'required' => true,
-                    'type' => 'string',
-                    'sanitize_callback' => 'sanitize_text_field',
-                    'validate_callback' => array($this, 'validate_job_id')
-                ),
-                'status' => array(
-                    'required' => true,
-                    'type' => 'string',
-                    'enum' => array('pending', 'processing', 'completed', 'failed'),
-                    'sanitize_callback' => 'sanitize_text_field'
-                ),
-                'user_id' => array(
-                    'required' => true,
-                    'type' => 'integer',
-                    'sanitize_callback' => 'absint',
-                    'validate_callback' => array($this, 'validate_user_id')
-                )
-            )
-        ));
-        
         // Route de statut d'un job
         register_rest_route($this->namespace, '/status/(?P<job_id>[a-zA-Z0-9_-]+)', array(
             'methods' => 'GET',
@@ -231,7 +204,6 @@ class Iris_Process_Rest_Api {
             'namespace' => $this->namespace,
             'endpoints' => array(
                 '/info' => 'Informations sur l\'API',
-                '/callback' => 'Callback depuis l\'API Python',
                 '/status/{job_id}' => 'Statut d\'un job',
                 '/download/{job_id}/{file_name}' => 'Téléchargement de fichier',
                 '/stats' => 'Statistiques (admin)',
@@ -240,52 +212,11 @@ class Iris_Process_Rest_Api {
                 '/presets/{preset_id}' => 'Preset spécifique',
                 '/health' => 'Vérification de santé'
             ),
-            'python_api_url' => IRIS_API_URL,
             'timestamp' => current_time('timestamp'),
             'timezone' => get_option('timezone_string')
         );
         
         return rest_ensure_response($info);
-    }
-    
-    /**
-     * Gérer le callback de l'API Python
-     * 
-     * @since 1.0.0
-     * @param WP_REST_Request $request
-     * @return WP_REST_Response|WP_Error
-     */
-    public function handle_callback($request) {
-        try {
-            $data = $request->get_json_params();
-            
-            if (empty($data)) {
-                return new WP_Error('missing_data', 'Données JSON manquantes', array('status' => 400));
-            }
-            
-            // Log du callback reçu
-            iris_log_error('Callback reçu: ' . json_encode($data));
-            
-            // Valider les données requises
-            $required_fields = array('job_id', 'status', 'user_id');
-            foreach ($required_fields as $field) {
-                if (!isset($data[$field]) || empty($data[$field])) {
-                    return new WP_Error('missing_field', "Champ requis manquant: $field", array('status' => 400));
-                }
-            }
-            
-            $processor = new Iris_Process_Image_Processor();
-            $response = $processor->handle_api_callback($data);
-            
-            // Log de la réponse
-            iris_log_error('Callback traité avec succès pour job: ' . $data['job_id']);
-            
-            return $response;
-            
-        } catch (Exception $e) {
-            iris_log_error('Erreur dans handle_callback: ' . $e->getMessage());
-            return new WP_Error('callback_error', 'Erreur lors du traitement du callback', array('status' => 500));
-        }
     }
     
     /**
@@ -589,16 +520,6 @@ class Iris_Process_Rest_Api {
             $health['status'] = 'degraded';
         }
         
-        // Vérification de l'API Python
-        if (function_exists('iris_test_api_connection')) {
-            $api_test = iris_test_api_connection();
-            $health['checks']['python_api'] = $api_test['success'] ? 'ok' : 'error';
-            
-            if (!$api_test['success']) {
-                $health['status'] = 'degraded';
-            }
-        }
-        
         return rest_ensure_response($health);
     }
     
@@ -656,19 +577,6 @@ class Iris_Process_Rest_Api {
      */
     public function check_download_access($request) {
         return $this->check_job_access($request);
-    }
-    
-    /**
-     * Vérifier la validité du callback API
-     * 
-     * @since 1.0.0
-     * @param WP_REST_Request $request
-     * @return bool
-     */
-    public function verify_api_callback($request) {
-        // Pour l'instant, autoriser tous les callbacks
-        // TODO: Implémenter une vérification par signature ou token
-        return true;
     }
     
     /**

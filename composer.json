@@ -1,0 +1,13 @@
+{
+    "name": "iris4pro/image-processor-tokens",
+    "description": "Plugin WordPress Iris Process Tokens - gestion des uploads et traitement d'images avec S3.",
+    "type": "project",
+    "require": {
+        "aws/aws-sdk-php": "^3.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "IrisProcess\\": "plugins/image-processor-tokens/"
+        }
+    }
+} 

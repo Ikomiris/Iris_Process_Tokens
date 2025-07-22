@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Iris Process - Image Processor with Tokens
  * Plugin URI: https://iris4pro.com
- * Description: Application WordPress de traitement d'images avec système de jetons et presets JSON. Permet le traitement d'images RAW via API Python avec gestion complète des tokens utilisateur et presets Iris Rawpy.
+ * Description: Application WordPress de traitement d'images avec système de jetons et presets JSON. Permet le traitement d'images RAW avec gestion complète des tokens utilisateur et presets Iris Rawpy.
  * Version: 1.1.1
  * Author: Ikomiris
  * Author URI: https://iris4pro.com
@@ -40,7 +40,7 @@ if (!defined('ABSPATH')) {
 define('IRIS_PLUGIN_VERSION', '1.1.1');
 define('IRIS_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('IRIS_PLUGIN_PATH', plugin_dir_path(__FILE__));
-define('IRIS_API_URL', 'http://54.155.119.226:8000');
+define('IRIS_API_URL', 'https://btrjln6o7e.execute-api.eu-west-1.amazonaws.com/iris4pro');
 
 // =============================================================================
 // 2. FONCTIONS UTILITAIRES GLOBALES DE BASE
@@ -279,6 +279,8 @@ class IrisProcessTokens {
      */
     private function load_optional_components() {
         $optional_files = array(
+            'includes/class-language-manager.php',
+            'includes/functions-i18n.php',
             'includes/class-preset-manager.php',
             'includes/class-user-dashboard.php',
             'includes/class-image-processor.php',
@@ -332,7 +334,7 @@ class IrisProcessTokens {
         
         // Administration
         if (function_exists('iris_add_admin_menu')) {
-            add_action('admin_menu', 'iris_add_admin_menu');
+            // Suppression du hook add_action('admin_menu', 'iris_add_admin_menu');
         }
         
         // Initialiser les classes si elles existent
@@ -350,6 +352,29 @@ class IrisProcessTokens {
         
         if (class_exists('User_Dashboard')) {
             new User_Dashboard();
+        }
+        
+        // Initialiser le gestionnaire de langues AVANT les autres composants
+        if (class_exists('Iris_Language_Manager')) {
+            Iris_Language_Manager::get_instance();
+        }
+        
+        // Forcer le rechargement des traductions avec le bon domaine
+        if (function_exists('load_plugin_textdomain')) {
+            $lang_manager = iris_get_language_manager();
+            if ($lang_manager && $lang_manager->is_english()) {
+                // Forcer la locale anglaise pour ce plugin
+                add_filter('locale', function($locale) {
+                    return 'en_US';
+                }, 999);
+                
+                // Recharger les traductions
+                load_plugin_textdomain(
+                    'iris-process-tokens',
+                    false,
+                    dirname(plugin_basename(__FILE__)) . '/languages'
+                );
+            }
         }
         
         iris_log_error('Plugin Iris Process: Hooks d\'application initialisés');
@@ -588,6 +613,21 @@ if (defined('ABSPATH') && !class_exists('IrisProcessTokens_Already_Loaded')) {
     // Déplacement des hooks d'activation/désactivation ici (contexte global)
     register_activation_hook(__FILE__, array('IrisProcessTokens', 'activate_static'));
     register_deactivation_hook(__FILE__, array('IrisProcessTokens', 'deactivate_static'));
+    
+    // Assure le chargement de la classe admin/class-preset-manager.php
+    if (file_exists(IRIS_PLUGIN_PATH . 'admin/class-preset-manager.php')) {
+        require_once IRIS_PLUGIN_PATH . 'admin/class-preset-manager.php';
+    }
+    // Alias pour compatibilité entre anciens et nouveaux systèmes de presets
+    if (!class_exists('Preset_Manager') && class_exists('Iris_Preset_Manager')) {
+        class_alias('Iris_Preset_Manager', 'Preset_Manager');
+    }
+    
+    // Ajout explicite du chargement du menu admin moderne
+    require_once IRIS_PLUGIN_PATH . 'includes/class-iris-process-main.php';
+    add_action('plugins_loaded', function() {
+        Iris_Process_Main::get_instance();
+    });
     
 } else {
     iris_log_error('IRIS WARNING: Plugin déjà chargé ou WordPress non initialisé');

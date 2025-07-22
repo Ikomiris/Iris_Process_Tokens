@@ -82,19 +82,24 @@ class Iris_Process_Image_Processor {
                 $this->cleanup_file($file_path);
                 return new WP_Error('db_error', 'Erreur lors de la création de l\'enregistrement');
             }
-            
-            // Envoi vers l'API ExtractIris avec preset
-            $api_result = $this->send_to_api($file_path, $user_id, $process_id, $preset_id);
-            if (is_wp_error($api_result)) {
-                $this->cleanup_file($file_path);
-                return $api_result;
+
+            // Création du job dans la table jobs
+            if (!function_exists('iris_create_job_record')) {
+                require_once dirname(__FILE__) . '/functions-database.php';
             }
-            
+            $created_job_id = iris_create_job_record(
+                $user_id,
+                basename($file_path),
+                null, // job_id généré automatiquement
+                $preset_id,
+                null // pas de réponse API ici
+            );
+
             return array(
                 'success' => true,
                 'message' => 'Fichier uploadé et traité avec succès !',
                 'process_id' => $process_id,
-                'job_id' => $api_result['job_id'],
+                'job_id' => $created_job_id,
                 'preset_applied' => $preset_id !== null,
                 'file_name' => $file['name'],
                 'remaining_tokens' => Token_Manager::get_user_balance($user_id)
@@ -173,8 +178,6 @@ class Iris_Process_Image_Processor {
                 'application/octet-stream' // Pour les formats RAW non reconnus
             );
             
-            // Log du type détecté pour debug
-            iris_log_error("Type MIME détecté pour {$file['name']}: $detected_type");
         }
         
         return true;
@@ -223,7 +226,6 @@ class Iris_Process_Image_Processor {
         // Définir les permissions appropriées
         chmod($file_path, 0644);
         
-        iris_log_error("Fichier sauvegardé avec succès: $file_path");
         return $file_path;
     }
     
@@ -260,153 +262,6 @@ class Iris_Process_Image_Processor {
         }
         
         return $wpdb->insert_id;
-    }
-    
-    /**
-     * Envoyer vers l'API ExtractIris
-     * 
-     * @since 1.0.0
-     * @param string $file_path Chemin du fichier
-     * @param int $user_id ID de l'utilisateur
-     * @param int $process_id ID du processus
-     * @param int|null $preset_id ID du preset
-     * @return array|WP_Error Résultat de l'API ou erreur
-     */
-    private function send_to_api($file_path, $user_id, $process_id, $preset_id = null) {
-        global $wpdb;
-        
-        $api_url = IRIS_API_URL . '/process';
-        $callback_url = home_url('/wp-json/iris/v1/callback');
-        
-        if (!file_exists($file_path)) {
-            return new WP_Error('file_not_found', 'Fichier non trouvé: ' . $file_path);
-        }
-        
-        // Récupérer le preset s'il est spécifié
-        $preset_data = null;
-        if ($preset_id && class_exists('Preset_Manager')) {
-            $preset_data = Preset_Manager::get_by_id($preset_id);
-            if (!$preset_data) {
-                iris_log_error("Preset ID $preset_id non trouvé, utilisation du preset par défaut");
-                $preset_data = Preset_Manager::get_default();
-            }
-        } elseif (class_exists('Preset_Manager')) {
-            // Utiliser le preset par défaut
-            $preset_data = Preset_Manager::get_default();
-        }
-        
-        try {
-            // Préparer le fichier pour l'upload
-            if (!class_exists('CURLFile')) {
-                return new WP_Error('curl_not_available', 'Extension cURL non disponible');
-            }
-            
-            $curl_file = new CURLFile($file_path, mime_content_type($file_path), basename($file_path));
-            
-            // Données pour l'API
-            $post_data = array(
-                'file' => $curl_file,
-                'user_id' => $user_id,
-                'process_id' => $process_id,
-                'callback_url' => $callback_url,
-                'processing_options' => json_encode(array(
-                    'use_preset' => $preset_data !== null,
-                    'preset_data' => $preset_data,
-                    'preset_format' => 'iris_json_v2'
-                ))
-            );
-            
-            // Configuration cURL
-            $ch = curl_init();
-            if (!$ch) {
-                return new WP_Error('curl_init_failed', 'Impossible d\'initialiser cURL');
-            }
-            
-            curl_setopt_array($ch, array(
-                CURLOPT_URL => $api_url,
-                CURLOPT_POST => true,
-                CURLOPT_POSTFIELDS => $post_data,
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_TIMEOUT => 60,
-                CURLOPT_CONNECTTIMEOUT => 30,
-                CURLOPT_HTTPHEADER => array(
-                    'Accept: application/json',
-                    'User-Agent: WordPress-IrisProcess/' . IRIS_PLUGIN_VERSION
-                ),
-                CURLOPT_FOLLOWLOCATION => true,
-                CURLOPT_MAXREDIRS => 3,
-                CURLOPT_SSL_VERIFYPEER => false, // Pour les environnements de dev
-                CURLOPT_SSL_VERIFYHOST => false
-            ));
-            
-            $response = curl_exec($ch);
-            $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            $curl_error = curl_error($ch);
-            curl_close($ch);
-            
-            // Vérifier les erreurs cURL
-            if ($curl_error) {
-                return new WP_Error('curl_error', 'Erreur cURL: ' . $curl_error);
-            }
-            
-            if ($http_code !== 200) {
-                iris_log_error("Erreur API HTTP $http_code: $response");
-                return new WP_Error('api_http_error', "Erreur HTTP $http_code de l'API");
-            }
-            
-            // Décoder la réponse JSON
-            $result = json_decode($response, true);
-            if (!$result) {
-                iris_log_error("Réponse API invalide: $response");
-                return new WP_Error('invalid_api_response', 'Réponse API invalide');
-            }
-            
-            if (!isset($result['success']) || !$result['success']) {
-                $error_msg = isset($result['error']) ? $result['error'] : 'Erreur API inconnue';
-                return new WP_Error('api_error', $error_msg);
-            }
-            
-            // Enregistrer le job en base de données
-            $job_id = $result['job_id'];
-            $table_jobs = $wpdb->prefix . 'iris_processing_jobs';
-            
-            $job_insert = $wpdb->insert(
-                $table_jobs,
-                array(
-                    'job_id' => $job_id,
-                    'user_id' => $user_id,
-                    'status' => 'pending',
-                    'original_file' => basename($file_path),
-                    'preset_id' => $preset_id,
-                    'created_at' => current_time('mysql'),
-                    'api_response' => $response
-                ),
-                array('%s', '%d', '%s', '%s', '%d', '%s', '%s')
-            );
-            
-            if ($job_insert === false) {
-                iris_log_error('Erreur insertion job: ' . $wpdb->last_error);
-                // Continuer quand même, le job sera traité
-            }
-            
-            // Sauvegarder les paramètres de traitement si preset utilisé
-            if ($preset_data && class_exists('Preset_Manager')) {
-                Preset_Manager::save_processing_params($job_id, $preset_id, $preset_data);
-            }
-            
-            iris_log_error("Job $job_id créé pour utilisateur $user_id avec preset: " . ($preset_data ? 'Oui' : 'Non'));
-            
-            return array(
-                'success' => true,
-                'job_id' => $job_id,
-                'message' => $result['message'] ?? 'Traitement démarré',
-                'preset_applied' => $preset_data !== null
-            );
-            
-        } catch (Exception $e) {
-            iris_log_error('Exception send_to_api: ' . $e->getMessage());
-            return new WP_Error('api_exception', 'Erreur API: ' . $e->getMessage());
-        }
     }
     
     /**
@@ -559,7 +414,6 @@ class Iris_Process_Image_Processor {
     private function cleanup_file($file_path) {
         if (file_exists($file_path)) {
             unlink($file_path);
-            iris_log_error("Fichier nettoyé: $file_path");
         }
     }
     

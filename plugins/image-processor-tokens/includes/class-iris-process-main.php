@@ -27,7 +27,7 @@ class Iris_Process_Main {
         require_once IRIS_PLUGIN_PATH . 'includes/class-ajax-handlers.php';
         require_once IRIS_PLUGIN_PATH . 'includes/class-rest-api.php';
         require_once IRIS_PLUGIN_PATH . 'includes/class-surecart-integration.php';
-        require_once IRIS_PLUGIN_PATH . 'includes/class-xmp-manager.php';
+        // require_once IRIS_PLUGIN_PATH . 'includes/class-xmp-manager.php';
         require_once IRIS_PLUGIN_PATH . 'shortcodes/class-shortcodes.php';
         
         if (is_admin()) {
@@ -71,10 +71,11 @@ class Iris_Process_Main {
     }
     
     public function admin_enqueue_scripts($hook) {
-        if (strpos($hook, 'iris') === false) {
+        // Pour cibler la page principale renommée en 'iris-dashboard' (anciennement 'iris-process')
+        // Le hook sera 'toplevel_page_iris-dashboard' si le slug du menu est 'iris-dashboard'
+        if ($hook !== 'toplevel_page_iris-dashboard') {
             return;
         }
-        
         wp_enqueue_style('iris-admin', IRIS_PLUGIN_URL . 'assets/css/iris-admin.css', array(), IRIS_PLUGIN_VERSION);
         wp_enqueue_script('iris-admin', IRIS_PLUGIN_URL . 'assets/js/iris-admin.js', array('jquery'), IRIS_PLUGIN_VERSION, true);
     }

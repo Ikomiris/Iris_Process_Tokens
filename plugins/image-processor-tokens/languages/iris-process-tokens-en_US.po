@@ -1,0 +1,622 @@
+# English translations for Iris Process - Image Processor with Tokens package.
+# Copyright (C) 2025 Ikomiris
+# This file is distributed under the same license as the Iris Process - Image Processor with Tokens package.
+# Translator: Iris4Pro Team <contact@iris4pro.com>, 2025.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Iris Process - Image Processor with Tokens 1.1.1\n"
+"Report-Msgid-Bugs-To: https://iris4pro.com\n"
+"POT-Creation-Date: 2025-01-17 10:00+0000\n"
+"PO-Revision-Date: 2025-01-17 10:30+0000\n"
+"Last-Translator: Iris4Pro Team <contact@iris4pro.com>\n"
+"Language-Team: English <en@li.org>\n"
+"Language: en_US\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: shortcodes/class-shortcodes.php:45
+msgid "Vos jetons disponibles :"
+msgstr "Available tokens:"
+
+#: shortcodes/class-shortcodes.php:47
+msgid "Vous n'avez pas assez de jetons."
+msgstr "You don't have enough tokens."
+
+#: shortcodes/class-shortcodes.php:47
+msgid "Achetez des jetons"
+msgstr "Buy tokens"
+
+#: shortcodes/class-shortcodes.php:72
+msgid "Glissez votre image ici ou cliquez pour sélectionner"
+msgstr "Drag your image here or click to select"
+
+#: shortcodes/class-shortcodes.php:73
+msgid "Formats supportés : CR3, CR2, NEF, ARW, RAW, DNG, ORF, RAF, RW2, JPG, TIF, PNG"
+msgstr "Supported formats: CR3, CR2, NEF, ARW, RAW, DNG, ORF, RAF, RW2, JPG, TIF, PNG"
+
+#: shortcodes/class-shortcodes.php:74
+msgid "Taille maximum :"
+msgstr "Maximum size:"
+
+#: shortcodes/class-shortcodes.php:87
+msgid "Traiter l'image (1 jeton)"
+msgstr "Process image (1 token)"
+
+#: shortcodes/class-shortcodes.php:88
+msgid "⏳ Traitement en cours..."
+msgstr "⏳ Processing..."
+
+#: shortcodes/class-shortcodes.php:95
+msgid "Historique des traitements"
+msgstr "Processing history"
+
+#: shortcodes/class-shortcodes.php:130
+msgid "Aucun traitement effectué pour le moment."
+msgstr "No processing performed yet."
+
+#: shortcodes/class-shortcodes.php:154
+msgid "Télécharger"
+msgstr "Download"
+
+#: shortcodes/class-shortcodes.php:166
+msgid "Préc."
+msgstr "Prev"
+
+#: shortcodes/class-shortcodes.php:168
+msgid "Suiv."
+msgstr "Next"
+
+#: shortcodes/class-shortcodes.php:182
+msgid "Connexion requise"
+msgstr "Login required"
+
+#: shortcodes/class-shortcodes.php:275
+msgid "Aucune transaction trouvée."
+msgstr "No transactions found."
+
+#: shortcodes/class-shortcodes.php:309
+msgid "Traitement d'image Iris Process"
+msgstr "Iris Process Image Processing"
+
+#: shortcodes/class-shortcodes.php:311
+msgid "Jetons disponibles :"
+msgstr "Available tokens:"
+
+#: shortcodes/class-shortcodes.php:325
+msgid "Cliquez pour sélectionner une image"
+msgstr "Click to select an image"
+
+#: shortcodes/class-shortcodes.php:327
+msgid "Formats acceptés : CR3, CR2, NEF, ARW, JPG, TIF, PNG"
+msgstr "Accepted formats: CR3, CR2, NEF, ARW, JPG, TIF, PNG"
+
+#: shortcodes/class-shortcodes.php:332
+msgid "Traiter l'image (1 jeton)"
+msgstr "Process image (1 token)"
+
+#: shortcodes/class-shortcodes.php:337
+msgid "Traitement en cours..."
+msgstr "Processing..."
+
+#: shortcodes/class-shortcodes.php:418
+msgid "Connexion requise"
+msgstr "Login required"
+
+#: shortcodes/class-shortcodes.php:419
+msgid "Vous devez être connecté pour utiliser cette fonctionnalité."
+msgstr "You must be logged in to use this feature."
+
+#: shortcodes/class-shortcodes.php:420
+msgid "Se connecter"
+msgstr "Log in"
+
+#: includes/functions-upload.php:32
+msgid "Erreur de sécurité - Nonce invalide"
+msgstr "Security error - Invalid nonce"
+
+#: includes/functions-upload.php:37
+msgid "Utilisateur non connecté"
+msgstr "User not logged in"
+
+#: includes/functions-upload.php:42
+msgid "Système de jetons non disponible"
+msgstr "Token system unavailable"
+
+#: includes/functions-upload.php:47
+msgid "Solde de jetons insuffisant (%d disponible)"
+msgstr "Insufficient token balance (%d available)"
+
+#: includes/functions-upload.php:52
+msgid "Fichier trop volumineux (limite serveur)"
+msgstr "File too large (server limit)"
+
+#: includes/functions-upload.php:53
+msgid "Fichier trop volumineux (limite formulaire)"
+msgstr "File too large (form limit)"
+
+#: includes/functions-upload.php:54
+msgid "Upload partiel"
+msgstr "Partial upload"
+
+#: includes/functions-upload.php:55
+msgid "Aucun fichier sélectionné"
+msgstr "No file selected"
+
+#: includes/functions-upload.php:56
+msgid "Dossier temporaire manquant"
+msgstr "Temporary folder missing"
+
+#: includes/functions-upload.php:57
+msgid "Erreur d'écriture disque"
+msgstr "Disk write error"
+
+#: includes/functions-upload.php:58
+msgid "Extension PHP bloquante"
+msgstr "Blocking PHP extension"
+
+#: includes/functions-upload.php:62
+msgid "Erreur upload inconnue"
+msgstr "Unknown upload error"
+
+#: includes/functions-upload.php:63
+msgid "Erreur lors de l'upload:"
+msgstr "Upload error:"
+
+#: includes/functions-upload.php:163
+msgid "Votre fichier a été envoyé avec succès, il est en cours de traitement..."
+msgstr "Your file has been uploaded successfully, it is being processed..."
+
+#: includes/functions-upload.php:184
+msgid "Format de fichier non supporté:"
+msgstr "Unsupported file format:"
+
+#: includes/functions-upload.php:184
+msgid "Formats acceptés:"
+msgstr "Accepted formats:"
+
+#: includes/functions-upload.php:189
+msgid "Fichier trop volumineux. Taille maximum:"
+msgstr "File too large. Maximum size:"
+
+#: includes/functions-upload.php:194
+msgid "Fichier temporaire non trouvé"
+msgstr "Temporary file not found"
+
+#: includes/functions-upload.php:242
+msgid "Impossible de créer le répertoire d'upload"
+msgstr "Unable to create upload directory"
+
+#: includes/functions-upload.php:275
+msgid "Erreur lors de la sauvegarde du fichier"
+msgstr "Error saving file"
+
+#: includes/functions-upload.php:294
+msgid "Erreur de sécurité"
+msgstr "Security error"
+
+#: includes/functions-upload.php:299
+msgid "ID de traitement manquant"
+msgstr "Missing processing ID"
+
+#: includes/functions-upload.php:304
+msgid "ID de traitement invalide"
+msgstr "Invalid processing ID"
+
+#: includes/functions-upload.php:320
+msgid "Traitement non trouvé ou accès non autorisé"
+msgstr "Processing not found or access denied"
+
+#: includes/functions-upload.php:356
+msgid "Paramètres manquants"
+msgstr "Missing parameters"
+
+#: includes/functions-upload.php:365
+msgid "Traitement non trouvé"
+msgstr "Processing not found"
+
+#: includes/functions-upload.php:370
+msgid "Fichier traité non disponible"
+msgstr "Processed file not available"
+
+#: includes/functions-upload.php:378
+msgid "Accès au fichier non autorisé"
+msgstr "File access denied"
+
+#: includes/functions-upload.php:400
+msgid "Erreur de téléchargement:"
+msgstr "Download error:"
+
+#: includes/class-user-dashboard.php:62
+msgid "Chargement..."
+msgstr "Loading..."
+
+#: includes/class-user-dashboard.php:63
+msgid "Erreur lors du chargement"
+msgstr "Loading error"
+
+#: includes/class-user-dashboard.php:64
+msgid "Actualiser"
+msgstr "Refresh"
+
+#: includes/class-user-dashboard.php:65
+msgid "Aucun traitement en cours"
+msgstr "No processing in progress"
+
+#: includes/class-user-dashboard.php:97
+msgid "pour voir votre solde de jetons"
+msgstr "to view your token balance"
+
+#: includes/class-user-dashboard.php:114
+msgid "💎 Vos jetons Iris Process"
+msgstr "💎 Your Iris Process Tokens"
+
+#: includes/class-user-dashboard.php:117
+msgid "🔄 Actualiser"
+msgstr "🔄 Refresh"
+
+#: includes/class-user-dashboard.php:125
+msgid "jeton"
+msgstr "token"
+
+#: includes/class-user-dashboard.php:125
+msgid "s"
+msgstr "s"
+
+#: includes/class-user-dashboard.php:125
+msgid "disponible"
+msgstr "available"
+
+#: includes/class-user-dashboard.php:130
+msgid "Total utilisé:"
+msgstr "Total used:"
+
+#: includes/class-user-dashboard.php:134
+msgid "Total acheté:"
+msgstr "Total purchased:"
+
+#: includes/class-user-dashboard.php:142
+msgid "🎨 Traiter une image"
+msgstr "🎨 Process an image"
+
+#: includes/class-user-dashboard.php:146
+msgid "🛒 Acheter des jetons"
+msgstr "🛒 Buy tokens"
+
+#: includes/class-user-dashboard.php:153
+msgid "Jetons disponibles:"
+msgstr "Available tokens:"
+
+#: includes/class-user-dashboard.php:164
+msgid "🚨 Vous n'avez plus de jetons pour traiter vos images."
+msgstr "🚨 You have no more tokens to process your images."
+
+#: includes/class-user-dashboard.php:166
+msgid "Recharger maintenant"
+msgstr "Recharge now"
+
+#: includes/class-user-dashboard.php:249
+msgid "pour traiter vos images"
+msgstr "to process your images"
+
+#: includes/class-user-dashboard.php:254
+msgid "💎 Plus de jetons disponibles"
+msgstr "💎 No more tokens available"
+
+#: includes/class-user-dashboard.php:255
+msgid "Vous devez acheter des jetons pour traiter vos images."
+msgstr "You must buy tokens to process your images."
+
+#: includes/class-user-dashboard.php:257
+msgid "🛒 Acheter des jetons"
+msgstr "🛒 Buy tokens"
+
+#: includes/class-user-dashboard.php:269
+msgid "🎨 Traitement d'image Iris Process"
+msgstr "🎨 Iris Process Image Processing"
+
+#: includes/class-user-dashboard.php:280
+msgid "❓ Aide"
+msgstr "❓ Help"
+
+#: includes/class-user-dashboard.php:286
+msgid "💡 Comment utiliser le traitement d'images ?"
+msgstr "💡 How to use image processing?"
+
+#: includes/class-user-dashboard.php:288
+msgid "Choisissez un preset"
+msgstr "Choose a preset"
+
+#: includes/class-user-dashboard.php:289
+msgid "Sélectionnez votre image"
+msgstr "Select your image"
+
+#: includes/class-user-dashboard.php:290
+msgid "Lancez le traitement"
+msgstr "Start processing"
+
+#: includes/class-user-dashboard.php:291
+msgid "Téléchargez le résultat"
+msgstr "Download the result"
+
+#: includes/class-user-dashboard.php:293
+msgid "Formats supportés:"
+msgstr "Supported formats:"
+
+#: includes/class-user-dashboard.php:298
+msgid "🎛️ Choisir un preset de traitement"
+msgstr "🎛️ Choose a processing preset"
+
+#: includes/class-user-dashboard.php:302
+msgid "Traitement par défaut"
+msgstr "Default processing"
+
+#: includes/class-user-dashboard.php:303
+msgid "Réglages automatiques optimisés"
+msgstr "Optimized automatic settings"
+
+#: includes/class-user-dashboard.php:312
+msgid "⭐ Recommandé"
+msgstr "⭐ Recommended"
+
+#: includes/class-user-dashboard.php:315
+msgid "Preset personnalisé"
+msgstr "Custom preset"
+
+#: includes/class-user-dashboard.php:318
+msgid "📊 Utilisé %d fois"
+msgstr "📊 Used %d times"
+
+#: includes/class-user-dashboard.php:336
+msgid "Glissez votre image ici ou cliquez pour sélectionner"
+msgstr "Drag your image here or click to select"
+
+#: includes/class-user-dashboard.php:337
+msgid "Formats acceptés : CR3, CR2, NEF, ARW, RAW, DNG, ORF, RAF, RW2, JPG, TIF, PNG"
+msgstr "Accepted formats: CR3, CR2, NEF, ARW, RAW, DNG, ORF, RAF, RW2, JPG, TIF, PNG"
+
+#: includes/class-user-dashboard.php:338
+msgid "Taille maximum :"
+msgstr "Maximum size:"
+
+#: includes/class-user-dashboard.php:353
+msgid "❌ Supprimer"
+msgstr "❌ Remove"
+
+#: includes/class-user-dashboard.php:359
+msgid "🚀 Traiter l'image (1 jeton)"
+msgstr "🚀 Process image (1 token)"
+
+#: includes/class-user-dashboard.php:360
+msgid "⏳ Traitement en cours..."
+msgstr "⏳ Processing..."
+
+#: includes/class-user-dashboard.php:366
+msgid "⚡ Traitement en cours..."
+msgstr "⚡ Processing..."
+
+#: includes/class-user-dashboard.php:374
+msgid "Initialisation..."
+msgstr "Initialization..."
+
+#: includes/class-user-dashboard.php:382
+msgid "📋 Traitements récents"
+msgstr "📋 Recent processings"
+
+#: includes/class-user-dashboard.php:393
+msgid "pour accéder à votre dashboard"
+msgstr "to access your dashboard"
+
+#: includes/class-user-dashboard.php:402
+msgid "👋 Bonjour %s"
+msgstr "👋 Hello %s"
+
+#: includes/class-user-dashboard.php:403
+msgid "Gérez vos jetons et traitements d'images"
+msgstr "Manage your tokens and image processing"
+
+#: includes/class-user-dashboard.php:420
+msgid "🚀 Actions rapides"
+msgstr "🚀 Quick actions"
+
+#: includes/class-user-dashboard.php:423
+msgid "🎨 Traiter une image"
+msgstr "🎨 Process an image"
+
+#: includes/class-user-dashboard.php:427
+msgid "🛒 Acheter des jetons"
+msgstr "🛒 Buy tokens"
+
+#: includes/class-user-dashboard.php:431
+msgid "📋 Voir l'historique"
+msgstr "📋 View history"
+
+#: includes/class-user-dashboard.php:438
+msgid "⚡ Traitements en cours"
+msgstr "⚡ Processing in progress"
+
+#: includes/class-user-dashboard.php:456
+msgid "📊 Vos statistiques"
+msgstr "📊 Your statistics"
+
+#: includes/class-user-dashboard.php:462
+msgid "Jetons disponibles"
+msgstr "Available tokens"
+
+#: includes/class-user-dashboard.php:470
+msgid "Images traitées"
+msgstr "Processed images"
+
+#: includes/class-user-dashboard.php:478
+msgid "Jetons achetés"
+msgstr "Purchased tokens"
+
+#: includes/class-user-dashboard.php:752
+msgid "🛒 Achat"
+msgstr "🛒 Purchase"
+
+#: includes/class-user-dashboard.php:753
+msgid "🎨 Utilisation"
+msgstr "🎨 Usage"
+
+#: includes/class-user-dashboard.php:754
+msgid "↩️ Remboursement"
+msgstr "↩️ Refund"
+
+#: includes/class-user-dashboard.php:755
+msgid "🎁 Bonus"
+msgstr "🎁 Bonus"
+
+#: includes/class-user-dashboard.php:756
+msgid "⚙️ Ajustement"
+msgstr "⚙️ Adjustment"
+
+#: includes/class-user-dashboard.php:777
+msgid "📭 Aucun traitement récent"
+msgstr "📭 No recent processing"
+
+#: includes/class-user-dashboard.php:778
+msgid "Traitez votre première image"
+msgstr "Process your first image"
+
+#: includes/class-user-dashboard.php:851
+msgid "😴 Aucun traitement en cours"
+msgstr "😴 No processing in progress"
+
+#: includes/class-user-dashboard.php:860
+msgid "Démarré"
+msgstr "Started"
+
+#: includes/class-user-dashboard.php:860
+msgid "ago"
+msgstr "ago"
+
+#: includes/class-user-dashboard.php:869
+msgid "❌ Annuler"
+msgstr "❌ Cancel"
+
+#: includes/class-user-dashboard.php:896
+msgid "En attente"
+msgstr "Pending"
+
+#: includes/class-user-dashboard.php:897
+msgid "En cours"
+msgstr "In progress"
+
+#: includes/class-user-dashboard.php:898
+msgid "Terminé"
+msgstr "Completed"
+
+#: includes/class-user-dashboard.php:899
+msgid "Échoué"
+msgstr "Failed"
+
+#: includes/class-user-dashboard.php:900
+msgid "Annulé"
+msgstr "Cancelled"
+
+#: includes/class-user-dashboard.php:914
+msgid "🔐 Connexion requise"
+msgstr "🔐 Login required"
+
+#: includes/class-user-dashboard.php:915
+msgid "Vous devez être connecté"
+msgstr "You must be logged in"
+
+#: includes/class-user-dashboard.php:918
+msgid "👤 Se connecter"
+msgstr "👤 Log in"
+
+#: includes/class-user-dashboard.php:922
+msgid "📝 S'inscrire"
+msgstr "📝 Sign up"
+
+#: includes/class-user-dashboard.php:937
+msgid "Erreur de sécurité"
+msgstr "Security error"
+
+#: includes/class-user-dashboard.php:943
+msgid "Utilisateur non connecté"
+msgstr "User not logged in"
+
+#: includes/class-user-dashboard.php:1007
+msgid "Erreur lors de l'actualisation"
+msgstr "Error during refresh"
+
+#: includes/functions-admin.php:14
+msgid "Presets JSON"
+msgstr "JSON Presets"
+
+#: includes/functions-admin.php:15
+msgid "Presets"
+msgstr "Presets"
+
+#: includes/functions-admin.php:22
+msgid "Jobs"
+msgstr "Jobs"
+
+#: includes/functions-admin.php:368
+msgid "Iris Process - Tableau de bord"
+msgstr "Iris Process - Dashboard"
+
+#: includes/functions-admin.php:372
+msgid "Utilisateurs actifs"
+msgstr "Active users"
+
+#: includes/functions-admin.php:374
+msgid "Comptes avec jetons"
+msgstr "Accounts with tokens"
+
+#: includes/functions-admin.php:378
+msgid "Traitements réussis"
+msgstr "Successful processing"
+
+#: includes/functions-admin.php:380
+msgid "Images traitées"
+msgstr "Processed images"
+
+#: includes/functions-admin.php:384
+msgid "En cours"
+msgstr "In progress"
+
+#: includes/functions-admin.php:386
+msgid "Files d'attente"
+msgstr "Queues"
+
+#: includes/functions-admin.php:390
+msgid "Presets JSON"
+msgstr "JSON Presets"
+
+#: includes/functions-admin.php:392
+msgid "Presets disponibles"
+msgstr "Available presets"
+
+#: includes/functions-admin.php:397
+msgid "Activité récente"
+msgstr "Recent activity"
+
+#: includes/functions-admin.php:400
+msgid "Aucune activité récente."
+msgstr "No recent activity."
+
+#: includes/functions-admin.php:440
+msgid "API Status"
+msgstr "API Status"
+
+#: includes/functions-admin.php:442
+msgid "Tester l'API"
+msgstr "Test API"
+
+#: includes/functions-admin.php:720
+msgid "Iris Process - Jetons"
+msgstr "Iris Process - Tokens"
+
+#: admin/class-preset-manager.php:51
+msgid "Format de fichier non supporté. Utilisez .xmp ou .json"
+msgstr "Unsupported file format. Use .xmp or .json"
+
+#: admin/class-preset-manager.php:163
+msgid "Erreur lors de l'insertion du preset en base :"
+msgstr "Error inserting preset in database:" 

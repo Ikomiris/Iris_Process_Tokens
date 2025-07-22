@@ -100,38 +100,6 @@ function iris_create_tables() {
             KEY created_at (created_at)
         ) $charset_collate;";
         
-        // Table des presets JSON administrateur (v1.1.0)
-        $table_admin_presets = $wpdb->prefix . 'iris_admin_presets';
-        $sql_admin_presets = "CREATE TABLE IF NOT EXISTS $table_admin_presets (
-            id int(11) NOT NULL AUTO_INCREMENT,
-            preset_name varchar(255) NOT NULL,
-            description text NULL,
-            preset_data longtext NOT NULL,
-            file_name varchar(255) NOT NULL,
-            is_default tinyint(1) DEFAULT 0,
-            usage_count int(11) DEFAULT 0,
-            created_by varchar(100) NOT NULL,
-            created_at datetime DEFAULT CURRENT_TIMESTAMP,
-            updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            PRIMARY KEY (id),
-            KEY preset_name (preset_name),
-            KEY is_default (is_default),
-            KEY created_by (created_by)
-        ) $charset_collate;";
-        
-        // Table pour stocker les paramètres de traitement par job (v1.1.0)
-        $table_processing_params = $wpdb->prefix . 'iris_processing_params';
-        $sql_processing_params = "CREATE TABLE IF NOT EXISTS $table_processing_params (
-            id int(11) NOT NULL AUTO_INCREMENT,
-            job_id varchar(100) NOT NULL,
-            preset_id int(11) NULL,
-            custom_params longtext NULL,
-            created_at datetime DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (id),
-            UNIQUE KEY job_id (job_id),
-            KEY preset_id (preset_id)
-        ) $charset_collate;";
-        
         // Table des presets associés à un type de photo (nouveau système)
         $table_presets = $wpdb->prefix . 'iris_presets';
         $sql_presets = "CREATE TABLE IF NOT EXISTS $table_presets (
@@ -157,7 +125,6 @@ function iris_create_tables() {
         $results['transactions'] = dbDelta($sql_transactions);
         $results['processes'] = dbDelta($sql_processes);
         $results['jobs'] = dbDelta($sql_jobs);
-        $results['admin_presets'] = dbDelta($sql_admin_presets);
         $results['processing_params'] = dbDelta($sql_processing_params);
         $results['presets'] = dbDelta($sql_presets);
         
@@ -181,7 +148,7 @@ function iris_create_tables() {
 function iris_ensure_default_preset() {
     global $wpdb;
     
-    $table_presets = $wpdb->prefix . 'iris_admin_presets';
+    $table_presets = $wpdb->prefix . 'iris_presets';
     
     // Vérifier si la table existe
     if ($wpdb->get_var("SHOW TABLES LIKE '{$table_presets}'") !== $table_presets) {
@@ -284,6 +251,43 @@ function iris_create_process_record($user_id, $file_name, $file_path) {
 }
 
 /**
+ * Création d'un enregistrement de job (table iris_processing_jobs)
+ * 
+ * @since 1.1.2
+ * @param int $user_id ID de l'utilisateur
+ * @param string $original_file Nom du fichier original
+ * @param string|null $job_id Identifiant du job (optionnel, généré si null)
+ * @param int|null $preset_id ID du preset (optionnel)
+ * @param mixed $api_response Réponse API brute (optionnel)
+ * @return string|false job_id ou false en cas d'erreur
+ */
+function iris_create_job_record($user_id, $original_file, $job_id = null, $preset_id = null, $api_response = null) {
+    global $wpdb;
+    $table_jobs = $wpdb->prefix . 'iris_processing_jobs';
+    if (!$job_id) {
+        $job_id = uniqid('job_' . $user_id . '_');
+    }
+    $result = $wpdb->insert(
+        $table_jobs,
+        array(
+            'job_id' => $job_id,
+            'user_id' => $user_id,
+            'status' => 'pending',
+            'original_file' => $original_file,
+            'preset_id' => $preset_id,
+            'api_response' => $api_response ? (is_string($api_response) ? $api_response : json_encode($api_response)) : null,
+            'created_at' => current_time('mysql')
+        ),
+        array('%s', '%d', '%s', '%s', '%d', '%s', '%s')
+    );
+    if ($result === false) {
+        iris_log_error('Erreur lors de la création du job record: ' . $wpdb->last_error);
+        return false;
+    }
+    return $job_id;
+}
+
+/**
  * Récupération de l'historique des traitements utilisateur
  * 
  * @since 1.0.0
@@ -296,7 +300,7 @@ function iris_get_user_process_history($user_id, $limit = 10) {
     global $wpdb;
     
     $table_jobs = $wpdb->prefix . 'iris_processing_jobs';
-    $table_presets = $wpdb->prefix . 'iris_admin_presets';
+    $table_presets = $wpdb->prefix . 'iris_presets';
     
     // Vérifier que les tables existent
     if ($wpdb->get_var("SHOW TABLES LIKE '{$table_jobs}'") !== $table_jobs) {
@@ -364,14 +368,24 @@ function iris_get_user_process_history($user_id, $limit = 10) {
  * @return string Texte lisible
  */
 function iris_get_status_text($status) {
-    $statuses = array(
-        'pending' => 'En attente',
-        'processing' => 'En cours de traitement',
-        'completed' => 'Terminé',
-        'failed' => 'Erreur',
-        'uploaded' => 'Uploadé'
-    );
-    
+    // Utiliser le système de traduction
+    if (function_exists('iris__')) {
+        $statuses = array(
+            'pending' => iris__('En attente'),
+            'processing' => iris__('En cours de traitement'),
+            'completed' => iris__('Terminé'),
+            'failed' => iris__('Erreur'),
+            'uploaded' => iris__('Uploadé')
+        );
+    } else {
+        $statuses = array(
+            'pending' => __('En attente', 'iris-process-tokens'),
+            'processing' => __('En cours de traitement', 'iris-process-tokens'),
+            'completed' => __('Terminé', 'iris-process-tokens'),
+            'failed' => __('Erreur', 'iris-process-tokens'),
+            'uploaded' => __('Uploadé', 'iris-process-tokens')
+        );
+    }
     return isset($statuses[$status]) ? $statuses[$status] : ucfirst($status);
 }
 
@@ -443,7 +457,7 @@ function iris_get_database_stats() {
         'iris_token_transactions' => 'Transactions de jetons',
         'iris_image_processes' => 'Traitements d\'images',
         'iris_processing_jobs' => 'Jobs de traitement',
-        'iris_admin_presets' => 'Presets JSON'
+        'iris_presets' => 'Presets JSON'
     );
     
     foreach ($tables as $table_suffix => $description) {

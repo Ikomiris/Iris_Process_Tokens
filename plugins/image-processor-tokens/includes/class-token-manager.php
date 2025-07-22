@@ -427,4 +427,67 @@ class Token_Manager {
         
         return $report;
     }
+
+    /**
+     * Définir le solde de jetons d'un utilisateur (modification directe)
+     *
+     * @since 1.2.0
+     * @param int $user_id ID de l'utilisateur
+     * @param int $new_balance Nouveau solde de jetons
+     * @param string $reason Raison de la modification (optionnel)
+     * @return bool Succès de l'opération
+     */
+    public static function set_user_balance($user_id, $new_balance, $reason = 'Ajustement manuel') {
+        global $wpdb;
+        $table_tokens = $wpdb->prefix . 'iris_user_tokens';
+        $table_transactions = $wpdb->prefix . 'iris_token_transactions';
+
+        if (!is_numeric($user_id) || $user_id <= 0) {
+            iris_log_error("Token_Manager::set_user_balance - User ID invalide: $user_id");
+            return false;
+        }
+        if (!is_numeric($new_balance) || $new_balance < 0) {
+            iris_log_error("Token_Manager::set_user_balance - Solde invalide: $new_balance");
+            return false;
+        }
+
+        $wpdb->query('START TRANSACTION');
+        try {
+            // Récupérer l'ancien solde
+            $old_balance = self::get_user_balance($user_id);
+            $diff = $new_balance - $old_balance;
+
+            // Mettre à jour ou créer le solde
+            $result = $wpdb->query($wpdb->prepare(
+                "INSERT INTO $table_tokens (user_id, token_balance, total_purchased, total_used, created_at, updated_at)
+                 VALUES (%d, %d, %d, %d, NOW(), NOW())
+                 ON DUPLICATE KEY UPDATE token_balance = %d, updated_at = NOW()",
+                $user_id, $new_balance, max($diff,0), max(-$diff,0), $new_balance
+            ));
+            if ($result === false) {
+                throw new Exception("Erreur lors de la mise à jour du solde");
+            }
+            // Enregistrer la transaction d'ajustement
+            if ($diff !== 0) {
+                $wpdb->insert(
+                    $table_transactions,
+                    array(
+                        'user_id' => $user_id,
+                        'transaction_type' => 'adjustment',
+                        'tokens_amount' => $diff,
+                        'description' => sanitize_text_field($reason),
+                        'created_at' => current_time('mysql')
+                    ),
+                    array('%d', '%s', '%d', '%s', '%s')
+                );
+            }
+            $wpdb->query('COMMIT');
+            iris_log_error("Solde modifié manuellement pour utilisateur $user_id: $old_balance => $new_balance");
+            return true;
+        } catch (Exception $e) {
+            $wpdb->query('ROLLBACK');
+            iris_log_error("Erreur Token_Manager::set_user_balance: " . $e->getMessage());
+            return false;
+        }
+    }
 }

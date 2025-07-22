@@ -20,7 +20,7 @@ if (!defined('ABSPATH')) {
  */
 function iris_handle_image_upload() {
     // Log de démarrage
-    iris_log_error('IRIS UPLOAD: Début traitement upload');
+    iris_log_error('IRIS UPLOAD: Début traitement upload (user_id=' . (isset($_POST['user_id']) ? $_POST['user_id'] : 'N/A') . ', fichier=' . (isset($_FILES['image_file']['name']) ? $_FILES['image_file']['name'] : 'N/A') . ')');
     
     // Vérifications de sécurité critiques
     try {
@@ -74,10 +74,40 @@ function iris_handle_image_upload() {
         }
         
         // 8. Sauvegarde sécurisée du fichier
-        $file_path = iris_save_uploaded_file($file, $user_id);
-        if (is_wp_error($file_path)) {
-            throw new Exception($file_path->get_error_message());
+        // Générer le nom unique AVANT de sauvegarder, pour vérifier l'existence
+        $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+        $safe_filename = sanitize_file_name(pathinfo($file['name'], PATHINFO_FILENAME));
+        $unique_filename = uniqid('iris_', true) . '_' . $safe_filename . '.' . $extension;
+        $upload_dir = wp_upload_dir();
+        $iris_dir = $upload_dir['basedir'] . '/iris-process';
+        $destination_path = $iris_dir . '/' . $unique_filename;
+        // Ensuite, procéder à la sauvegarde réelle
+        $file_save = iris_save_uploaded_file($file, $user_id);
+        if (is_wp_error($file_save)) {
+            throw new Exception($file_save->get_error_message());
         }
+        $file_path = $file_save['path'];
+        $unique_filename = $file_save['filename'];
+        // --- UPLOAD S3 ---
+        // 1. Photo source (nom unique)
+        iris_log_error('IRIS S3: Préparation upload photo S3 (key=' . $unique_filename . ', path=' . $file_path . ')');
+        $s3_photo_key = $unique_filename;
+        $s3_photo_result = iris_upload_to_s3($file_path, $s3_photo_key);
+        if (is_wp_error($s3_photo_result)) {
+            throw new Exception('Erreur upload S3 photo : ' . $s3_photo_result->get_error_message());
+        }
+        // 2. Preset JSON (même nom, extension .json)
+        $s3_preset_key = null;
+        $s3_preset_result = null;
+        if ($preset_file_path && file_exists($preset_file_path)) {
+            $s3_preset_key = preg_replace('/\.[^.]+$/', '.json', $unique_filename);
+            iris_log_error('IRIS S3: Préparation upload preset S3 (key=' . $s3_preset_key . ', path=' . $preset_file_path . ')');
+            $s3_preset_result = iris_upload_to_s3($preset_file_path, $s3_preset_key);
+            if (is_wp_error($s3_preset_result)) {
+                throw new Exception('Erreur upload S3 preset : ' . $s3_preset_result->get_error_message());
+            }
+        }
+        // --- FIN UPLOAD S3 ---
         
         // 9. Création de l'enregistrement de traitement
         $process_id = iris_create_process_record($user_id, $file['name'], $file_path);
@@ -85,22 +115,51 @@ function iris_handle_image_upload() {
             throw new Exception('Erreur création enregistrement traitement');
         }
         
-        // 10. Envoi vers l'API Python
-        $api_result = iris_send_to_python_api($file_path, $user_id, $process_id, $preset_file_path);
-        if (is_wp_error($api_result)) {
-            throw new Exception('Erreur API: ' . $api_result->get_error_message());
+        // 10. Appel API externe (remplace l'envoi du .txt)
+        $api_url = IRIS_API_URL . '/customers/process';
+        $api_key = 'sk-JYNhme53XA61qLy0DQ7uT9FcofWarvSV';
+        $api_payload = array(
+            'external_id' => strval($user_id),
+            'source_file' => $s3_photo_key,
+            'preset_file' => $s3_preset_key ? $s3_preset_key : '',
+        );
+        $api_args = array(
+            'headers' => array(
+                'api_key' => $api_key,
+                'Content-Type' => 'application/json',
+            ),
+            'body' => json_encode($api_payload),
+            'timeout' => 15,
+        );
+        $api_response = wp_remote_post($api_url, $api_args);
+        if (is_wp_error($api_response)) {
+            iris_log_error('IRIS API ERROR: ' . $api_response->get_error_message());
+        } else {
+            iris_log_error('IRIS API: Réponse ' . wp_remote_retrieve_response_code($api_response));
         }
+        
+        // Création du job dans la table jobs
+        $job_id = null;
+        $api_body = null;
+        if (!is_wp_error($api_response) && isset($api_response['body'])) {
+            $api_body = json_decode($api_response['body'], true);
+            if (isset($api_body['job_id'])) {
+                $job_id = $api_body['job_id'];
+            }
+        }
+        $created_job_id = iris_create_job_record(
+            $user_id,
+            $unique_filename,
+            $job_id,
+            null, // preset_id non disponible ici
+            $api_response['body'] ?? null
+        );
         
         // Succès !
         iris_log_error('IRIS UPLOAD: Succès pour utilisateur ' . $user_id);
         
         wp_send_json_success(array(
-            'message' => 'Fichier uploadé avec succès ! Traitement en cours...',
-            'process_id' => $process_id,
-            'job_id' => $api_result['job_id'],
-            'file_name' => basename($file_path),
-            'preset_applied' => isset($api_result['preset_applied']) ? $api_result['preset_applied'] : false,
-            'remaining_tokens' => Token_Manager::get_user_balance($user_id)
+            'message' => 'Votre fichier a été envoyé avec succès, il est en cours de traitement...'
         ));
         
     } catch (Exception $e) {
@@ -194,14 +253,16 @@ function iris_save_uploaded_file($file, $user_id) {
     // Générer un nom de fichier sécurisé et unique
     $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
     $safe_filename = sanitize_file_name(pathinfo($file['name'], PATHINFO_FILENAME));
-    $unique_filename = uniqid('iris_' . $user_id . '_' . substr($safe_filename, 0, 20) . '_') . '.' . $extension;
+    $now = current_time('timestamp');
+    $date_str = date('d-m-Y-H-i', $now);
+    $unique_filename = $date_str . '-' . $safe_filename . '.' . $extension;
     
     // Chemin de destination
     $destination_path = $iris_dir . '/' . $unique_filename;
     
     // Vérifier que le fichier de destination n'existe pas déjà
     if (file_exists($destination_path)) {
-        $unique_filename = uniqid('iris_' . $user_id . '_' . time() . '_') . '.' . $extension;
+        $unique_filename = $date_str . '-' . $safe_filename . '-' . uniqid() . '.' . $extension;
         $destination_path = $iris_dir . '/' . $unique_filename;
     }
     
@@ -211,7 +272,8 @@ function iris_save_uploaded_file($file, $user_id) {
         chmod($destination_path, 0644);
         
         iris_log_error('IRIS UPLOAD: Fichier sauvegardé - ' . $unique_filename);
-        return $destination_path;
+        // On retourne aussi le nom unique pour l'utiliser dans l'upload S3
+        return array('path' => $destination_path, 'filename' => $unique_filename);
     } else {
         return new WP_Error('move_failed', 'Erreur lors de la sauvegarde du fichier');
     }
@@ -445,3 +507,75 @@ function iris_get_preset_for_file($file_name) {
     }
     return null;
 }
+
+// --- AJOUT : Fonction utilitaire d'upload S3 ---
+use Aws\S3\S3Client;
+
+function iris_upload_to_s3($local_path, $s3_key, $bucket = null) {
+    // Récupérer les credentials depuis les options WP
+    $access_key = get_option('iris_s3_access_key', '');
+    $secret_key = get_option('iris_s3_secret_key', '');
+    $region = get_option('iris_s3_region', 'eu-west-1');
+    if (!$bucket) {
+        $bucket = get_option('iris_s3_bucket', 'ikomiris-extractiris-source');
+    }
+    if (!$access_key || !$secret_key || !$region || !$bucket) {
+        return new WP_Error('s3_config', 'Configuration S3 incomplète');
+    }
+    require_once __DIR__ . '/../vendor/autoload.php';
+    try {
+        $s3 = new S3Client([
+            'version' => 'latest',
+            'region'  => $region,
+            'credentials' => [
+                'key'    => $access_key,
+                'secret' => $secret_key,
+            ],
+        ]);
+        $result = $s3->putObject([
+            'Bucket' => $bucket,
+            'Key'    => $s3_key,
+            'SourceFile' => $local_path,
+            'ACL'    => 'private',
+        ]);
+        return $result['ObjectURL'];
+    } catch (Exception $e) {
+        return new WP_Error('s3_upload', 'Erreur S3: ' . $e->getMessage());
+    }
+}
+// --- FIN AJOUT ---
+
+// === AJOUT : Champ Jetons dans la fiche utilisateur WP (admin) ===
+add_action('show_user_profile', 'iris_user_tokens_field');
+add_action('edit_user_profile', 'iris_user_tokens_field');
+add_action('personal_options_update', 'iris_save_user_tokens_field');
+add_action('edit_user_profile_update', 'iris_save_user_tokens_field');
+
+if (!function_exists('iris_user_tokens_field')) {
+function iris_user_tokens_field($user) {
+    if (!current_user_can('edit_users')) return;
+    if (!class_exists('Token_Manager')) return;
+    $balance = Token_Manager::get_user_balance($user->ID);
+    ?>
+    <h3>Jetons Iris Process</h3>
+    <table class="form-table">
+        <tr>
+            <th><label for="iris_tokens">Nombre de jetons</label></th>
+            <td>
+                <input type="number" name="iris_tokens" id="iris_tokens" value="<?php echo esc_attr($balance); ?>" class="regular-text" min="0" />
+                <p class="description">Solde de jetons pour cet utilisateur.</p>
+            </td>
+        </tr>
+    </table>
+    <?php
+}}
+
+if (!function_exists('iris_save_user_tokens_field')) {
+function iris_save_user_tokens_field($user_id) {
+    if (!current_user_can('edit_users')) return;
+    if (!class_exists('Token_Manager')) return;
+    if (isset($_POST['iris_tokens'])) {
+        $new_balance = intval($_POST['iris_tokens']);
+        Token_Manager::set_user_balance($user_id, $new_balance, 'Modification admin fiche utilisateur');
+    }
+}}

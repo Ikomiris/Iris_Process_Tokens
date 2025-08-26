@@ -115,12 +115,22 @@ function iris_handle_image_upload() {
             throw new Exception('Erreur création enregistrement traitement');
         }
         
-        // 10. Appel API externe (remplace l'envoi du .txt)
+        // 9.5. Création du job WordPress AVANT l'appel API pour avoir le wp_job_id
+        $created_job_id = iris_create_job_record(
+            $user_id,
+            $unique_filename,
+            null, // job_id API sera mis à jour après
+            null, // preset_id non disponible ici
+            null  // pas de réponse API encore
+        );
+        
+        // 10. Appel API externe avec wp_job_id et source_file
         $api_url = IRIS_API_URL . '/customers/process';
         $api_key = 'sk-JYNhme53XA61qLy0DQ7uT9FcofWarvSV';
         $api_payload = array(
             'external_id' => strval($user_id),
-            'source_file' => $s3_photo_key,
+            'wp_job_id' => $created_job_id,
+            'source_file' => basename($file_path),
             'preset_file' => $s3_preset_key ? $s3_preset_key : '',
         );
         $api_args = array(
@@ -138,22 +148,17 @@ function iris_handle_image_upload() {
             iris_log_error('IRIS API: Réponse ' . wp_remote_retrieve_response_code($api_response));
         }
         
-        // Création du job dans la table jobs
+        // Mise à jour du job avec la réponse API
         $job_id = null;
         $api_body = null;
         if (!is_wp_error($api_response) && isset($api_response['body'])) {
             $api_body = json_decode($api_response['body'], true);
             if (isset($api_body['job_id'])) {
                 $job_id = $api_body['job_id'];
+                // Mettre à jour le job WordPress avec le job_id de l'API
+                iris_update_job_api_response($created_job_id, $job_id, $api_response['body']);
             }
         }
-        $created_job_id = iris_create_job_record(
-            $user_id,
-            $unique_filename,
-            $job_id,
-            null, // preset_id non disponible ici
-            $api_response['body'] ?? null
-        );
         
         // Succès !
         iris_log_error('IRIS UPLOAD: Succès pour utilisateur ' . $user_id);

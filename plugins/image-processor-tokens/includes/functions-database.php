@@ -504,3 +504,36 @@ function iris_maybe_update_database() {
         iris_log_error("Base de données mise à jour vers la version {$plugin_version}");
     }
 }
+
+/**
+ * Mettre à jour un job avec la réponse de l'API Python
+ * 
+ * @since 1.1.1
+ * @param string $wp_job_id ID du job WordPress
+ * @param string $api_job_id ID du job retourné par l'API Python
+ * @param string $api_response Réponse complète de l'API
+ * @return bool True si succès, false sinon
+ */
+function iris_update_job_api_response($wp_job_id, $api_job_id, $api_response) {
+    global $wpdb;
+    $table_jobs = $wpdb->prefix . 'iris_processing_jobs';
+    
+    $result = $wpdb->update(
+        $table_jobs,
+        array(
+            'job_id' => $api_job_id,
+            'api_response' => is_string($api_response) ? $api_response : json_encode($api_response),
+            'updated_at' => current_time('mysql')
+        ),
+        array('job_id' => $wp_job_id),
+        array('%s', '%s', '%s'),
+        array('%s')
+    );
+    
+    if ($result === false) {
+        iris_log_error('Erreur lors de la mise à jour du job API response: ' . $wpdb->last_error);
+        return false;
+    }
+    
+    return true;
+}

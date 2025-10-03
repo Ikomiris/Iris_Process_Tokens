@@ -328,30 +328,41 @@ function iris_get_user_process_history($user_id, $limit = 10) {
         $status_class = 'iris-status-' . $job->status;
         $status_text = iris_get_status_text($job->status);
         
+        // URL pour la miniature JPG
+        $thumbnail_url = 'https://btrjln6o7e.execute-api.eu-west-1.amazonaws.com/iris4pro/customers/process/download/jpg/' . $job->job_id;
+        
+        // URL pour le téléchargement PSD (seulement si terminé)
+        $download_url = 'https://btrjln6o7e.execute-api.eu-west-1.amazonaws.com/iris4pro/customers/process/download/psd/' . $job->job_id;
+        
         $output .= '<div class="iris-history-item ' . $status_class . '">';
+        
+        // Informations du fichier
         $output .= '<div class="iris-history-info">';
         $output .= '<strong>' . esc_html($job->original_file) . '</strong>';
         
         // Afficher le preset utilisé (v1.1.0)
         if ($job->preset_name) {
-            $output .= '<small style="color: #3de9f4; display: block;">🎨 ' . esc_html($job->preset_name) . '</small>';
+            $output .= '<small>🎨 ' . esc_html($job->preset_name) . '</small>';
         }
         
-        $output .= '<span class="iris-status">' . $status_text . '</span>';
-        $output .= '<span class="iris-date">' . date('d/m/Y H:i', strtotime($job->created_at)) . '</span>';
+        $output .= '<span class="iris-status-badge iris-status-' . $job->status . '">' . $status_text . '</span>';
         $output .= '</div>';
         
-        if ($job->status === 'completed' && $job->result_files) {
-            $files = json_decode($job->result_files, true);
-            if ($files && is_array($files)) {
-                $output .= '<div class="iris-download">';
-                foreach ($files as $file) {
-                    $download_url = home_url('/wp-json/iris/v1/download/' . $job->job_id . '/' . basename($file));
-                    $output .= '<a href="' . esc_url($download_url) . '" class="iris-download-btn" download>Télécharger ' . esc_html(basename($file)) . '</a>';
-                }
-                $output .= '</div>';
-            }
+        // Section téléchargement (seulement si terminé)
+        if ($job->status === 'completed') {
+            $output .= '<div class="iris-download-section">';
+            $output .= '<a href="' . esc_url($download_url) . '" class="iris-download-btn" download>Télécharger le fichier</a>';
+            $output .= '</div>';
         }
+        
+        // Date et heure
+        $output .= '<span class="iris-date">' . date('d/m/Y H:i', strtotime($job->created_at)) . '</span>';
+        
+        // Miniature
+        $output .= '<div class="iris-thumbnail-container">';
+        $output .= '<img src="' . esc_url($thumbnail_url) . '" alt="Photo miniature" class="iris-thumbnail-image" onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'block\';">';
+        $output .= '<div class="iris-thumbnail-placeholder" style="display:none;">Photo miniature</div>';
+        $output .= '</div>';
         
         $output .= '</div>';
     }
@@ -372,17 +383,17 @@ function iris_get_status_text($status) {
     if (function_exists('iris__')) {
         $statuses = array(
             'pending' => iris__('En attente'),
-            'processing' => iris__('En cours de traitement'),
+            'processing' => iris__('En cours'),
             'completed' => iris__('Terminé'),
-            'failed' => iris__('Erreur'),
+            'failed' => iris__('Échoué'),
             'uploaded' => iris__('Uploadé')
         );
     } else {
         $statuses = array(
             'pending' => __('En attente', 'iris-process-tokens'),
-            'processing' => __('En cours de traitement', 'iris-process-tokens'),
+            'processing' => __('En cours', 'iris-process-tokens'),
             'completed' => __('Terminé', 'iris-process-tokens'),
-            'failed' => __('Erreur', 'iris-process-tokens'),
+            'failed' => __('Échoué', 'iris-process-tokens'),
             'uploaded' => __('Uploadé', 'iris-process-tokens')
         );
     }

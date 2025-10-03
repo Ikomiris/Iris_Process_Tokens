@@ -259,23 +259,41 @@ class Iris_Process_Shortcodes {
                     html = '<div class="iris-history-items">';
                     items.forEach(function(job) {
                         let statusClass = 'iris-status-' + job.status;
-                        let statusColor = getStatusColor(job.status);
+                        let statusText = job.status_text;
+                        
+                        // URL pour la miniature JPG - avec test de fallback
+                        const thumbnailUrl = 'https://btrjln6o7e.execute-api.eu-west-1.amazonaws.com/iris4pro/customers/process/download/jpg/' + job.job_id;
+                        // Test: utiliser une image de test pour vérifier l'affichage
+                        // const thumbnailUrl = 'https://via.placeholder.com/80x60/3de9f4/ffffff?text=IMG';
+                        
+                        // URL pour le téléchargement PSD (seulement si terminé)
+                        const downloadUrl = 'https://btrjln6o7e.execute-api.eu-west-1.amazonaws.com/iris4pro/customers/process/download/psd/' + job.job_id;
+                        
                         html += '<div class="iris-history-item '+statusClass+'">';
+                        
+                        // Informations du fichier
                         html += '<div class="iris-history-info">';
                         html += '<strong>' + job.original_file + '</strong>';
-                        if(job.preset_name) html += '<small style="color:#3de9f4;display:block;">🎨 '+job.preset_name+'</small>';
-                        html += '<span class="iris-status-capsule" style="display:inline-block;padding:2px 10px;border-radius:12px;font-size:13px;font-weight:bold;background:'+statusColor+';color:#fff;margin-left:8px;vertical-align:middle;">'+job.status_text+'</span>';
+                        if(job.preset_name) html += '<small>🎨 '+job.preset_name+'</small>';
+                        html += '<span class="iris-status-badge iris-status-' + job.status + '">' + statusText + '</span>';
                         html += '<span class="iris-date" style="margin-left:10px;color:#ccc;font-size:12px;">'+job.created_at+'</span>';
                         html += '</div>';
-                        if(job.status === 'completed' && Array.isArray(job.result_files) && job.result_files.length > 0) {
-                            html += '<div class="iris-download">';
-                            job.result_files.forEach(function(file) {
-                                const fileName = file.split('/').pop();
-                                const downloadUrl = '/wp-json/iris/v1/download/' + job.job_id + '/' + fileName;
-                                html += '<a href="'+downloadUrl+'" class="iris-download-btn" download>' + window.irisShortcodeTranslations.download + ' '+fileName+'</a>';
-                            });
+                        
+                        // Section téléchargement (seulement si terminé)
+                        if(job.status === 'completed' || job.status_text === 'Success' || job.status_text === 'Terminé') {
+                            html += '<div class="iris-download-section">';
+                            html += '<a href="'+downloadUrl+'" class="iris-download-btn" download>Télécharger le fichier</a>';
                             html += '</div>';
                         }
+                        
+                        // Date et heure (déplacée dans iris-history-info)
+                        
+                        // Miniature
+                        html += '<div class="iris-thumbnail-container">';
+                        html += '<img src="'+thumbnailUrl+'" alt="Photo miniature" class="iris-thumbnail-image" onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'flex\';">';
+                        html += '<div class="iris-thumbnail-placeholder" style="display:none; align-items:center; justify-content:center; background:#f0f0f0; color:#666; font-size:10px; text-align:center; padding:5px;">📷<br/>Miniature</div>';
+                        html += '</div>';
+                        
                         html += '</div>';
                     });
                     html += '</div>';
@@ -454,12 +472,23 @@ class Iris_Process_Shortcodes {
             let currentPage = 1;
             function getStatusColor(status) {
                 switch(status) {
-                    case 'completed': return '#28a745'; // vert
+                    case 'completed': return '#808080'; // gris avec bordure orange
                     case 'failed': return '#dc3545'; // rouge
-                    case 'processing': return '#ffc107'; // jaune
-                    case 'pending': return '#17a2b8'; // bleu
+                    case 'processing': return '#FF8C00'; // orange
+                    case 'pending': return '#66D9EF'; // bleu cyan
                     case 'uploaded': return '#6c757d'; // gris
                     default: return '#888';
+                }
+            }
+            
+            function getStatusText(status) {
+                switch(status) {
+                    case 'completed': return 'Terminé';
+                    case 'failed': return 'Échoué';
+                    case 'processing': return 'En cours';
+                    case 'pending': return 'En attente';
+                    case 'uploaded': return 'Uploadé';
+                    default: return status;
                 }
             }
             function renderHistoryPage(page) {
@@ -473,23 +502,41 @@ class Iris_Process_Shortcodes {
                     html = '<div class="iris-history-items">';
                     items.forEach(function(job) {
                         let statusClass = 'iris-status-' + job.status;
-                        let statusColor = getStatusColor(job.status);
+                        let statusText = job.status_text;
+                        
+                        // URL pour la miniature JPG - avec test de fallback
+                        const thumbnailUrl = 'https://btrjln6o7e.execute-api.eu-west-1.amazonaws.com/iris4pro/customers/process/download/jpg/' + job.job_id;
+                        // Test: utiliser une image de test pour vérifier l'affichage
+                        // const thumbnailUrl = 'https://via.placeholder.com/80x60/3de9f4/ffffff?text=IMG';
+                        
+                        // URL pour le téléchargement PSD (seulement si terminé)
+                        const downloadUrl = 'https://btrjln6o7e.execute-api.eu-west-1.amazonaws.com/iris4pro/customers/process/download/psd/' + job.job_id;
+                        
                         html += '<div class="iris-history-item '+statusClass+'">';
+                        
+                        // Informations du fichier
                         html += '<div class="iris-history-info">';
                         html += '<strong>' + job.original_file + '</strong>';
-                        if(job.preset_name) html += '<small style="color:#3de9f4;display:block;">🎨 '+job.preset_name+'</small>';
-                        html += '<span class="iris-status-capsule" style="display:inline-block;padding:2px 10px;border-radius:12px;font-size:13px;font-weight:bold;background:'+statusColor+';color:#fff;margin-left:8px;vertical-align:middle;">'+job.status_text+'</span>';
+                        if(job.preset_name) html += '<small>🎨 '+job.preset_name+'</small>';
+                        html += '<span class="iris-status-badge iris-status-' + job.status + '">' + statusText + '</span>';
                         html += '<span class="iris-date" style="margin-left:10px;color:#ccc;font-size:12px;">'+job.created_at+'</span>';
                         html += '</div>';
-                        if(job.status === 'completed' && Array.isArray(job.result_files) && job.result_files.length > 0) {
-                            html += '<div class="iris-download">';
-                            job.result_files.forEach(function(file) {
-                                const fileName = file.split('/').pop();
-                                const downloadUrl = '/wp-json/iris/v1/download/' + job.job_id + '/' + fileName;
-                                html += '<a href="'+downloadUrl+'" class="iris-download-btn" download>' + window.irisShortcodeTranslations.download + ' '+fileName+'</a>';
-                            });
+                        
+                        // Section téléchargement (seulement si terminé)
+                        if(job.status === 'completed' || job.status_text === 'Success' || job.status_text === 'Terminé') {
+                            html += '<div class="iris-download-section">';
+                            html += '<a href="'+downloadUrl+'" class="iris-download-btn" download>Télécharger le fichier</a>';
                             html += '</div>';
                         }
+                        
+                        // Date et heure (déplacée dans iris-history-info)
+                        
+                        // Miniature
+                        html += '<div class="iris-thumbnail-container">';
+                        html += '<img src="'+thumbnailUrl+'" alt="Photo miniature" class="iris-thumbnail-image" onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'flex\';">';
+                        html += '<div class="iris-thumbnail-placeholder" style="display:none; align-items:center; justify-content:center; background:#f0f0f0; color:#666; font-size:10px; text-align:center; padding:5px;">📷<br/>Miniature</div>';
+                        html += '</div>';
+                        
                         html += '</div>';
                     });
                     html += '</div>';

@@ -187,6 +187,45 @@ class Iris_Process_Rest_Api {
             'callback' => array($this, 'health_check'),
             'permission_callback' => '__return_true'
         ));
+        
+        // Route de callback webhook pour l'API Python
+        register_rest_route($this->namespace, '/webhook-callback', array(
+            'methods' => 'POST',
+            'callback' => array($this, 'handle_webhook_callback'),
+            'permission_callback' => array($this, 'check_webhook_permission'),
+            'args' => array(
+                'shared_key' => array(
+                    'required' => true,
+                    'type' => 'string',
+                    'sanitize_callback' => 'sanitize_text_field'
+                ),
+                'wp_job_id' => array(
+                    'required' => true,
+                    'type' => 'string',
+                    'sanitize_callback' => 'sanitize_text_field'
+                ),
+                'user_id' => array(
+                    'required' => true,
+                    'type' => 'integer',
+                    'sanitize_callback' => 'absint'
+                ),
+                'source_file' => array(
+                    'required' => false,
+                    'type' => 'string',
+                    'sanitize_callback' => 'sanitize_text_field'
+                ),
+                'status' => array(
+                    'required' => true,
+                    'type' => 'string',
+                    'sanitize_callback' => 'sanitize_text_field'
+                ),
+                'api_job_id' => array(
+                    'required' => false,
+                    'type' => 'string',
+                    'sanitize_callback' => 'sanitize_text_field'
+                )
+            )
+        ));
     }
     
     /**
@@ -210,7 +249,8 @@ class Iris_Process_Rest_Api {
                 '/users' => 'Liste des utilisateurs (admin)',
                 '/presets' => 'Liste des presets',
                 '/presets/{preset_id}' => 'Preset spécifique',
-                '/health' => 'Vérification de santé'
+                '/health' => 'Vérification de santé',
+                '/webhook-callback' => 'Callback webhook pour l\'API Python'
             ),
             'timestamp' => current_time('timestamp'),
             'timezone' => get_option('timezone_string')
@@ -599,5 +639,85 @@ class Iris_Process_Rest_Api {
      */
     public function validate_user_id($param) {
         return is_numeric($param) && intval($param) > 0;
+    }
+    
+    /**
+     * Gérer le callback webhook de l'API Python
+     * 
+     * @since 1.0.0
+     * @param WP_REST_Request $request
+     * @return WP_REST_Response|WP_Error
+     */
+    public function handle_webhook_callback($request) {
+        try {
+            // Récupérer les paramètres
+            $shared_key = $request->get_param('shared_key');
+            $wp_job_id = $request->get_param('wp_job_id');
+            $user_id = $request->get_param('user_id');
+            $source_file = $request->get_param('source_file');
+            $status = $request->get_param('status');
+            $api_job_id = $request->get_param('api_job_id');
+            
+            // Log de la requête
+            iris_log_error("Webhook callback reçu: job_id=$wp_job_id, user_id=$user_id, status=$status");
+            
+            // Préparer les données pour le callback
+            $callback_data = array(
+                'job_id' => $wp_job_id,
+                'user_id' => $user_id,
+                'status' => $status,
+                'source_file' => $source_file,
+                'api_job_id' => $api_job_id
+            );
+            
+            // Traiter le callback via le processeur d'images
+            $processor = new Iris_Process_Image_Processor();
+            $result = $processor->handle_api_callback($callback_data);
+            
+            // Retourner la réponse
+            if (is_wp_error($result)) {
+                return $result;
+            }
+            
+            return rest_ensure_response(array(
+                'status' => 'success',
+                'message' => 'Webhook traité avec succès',
+                'data' => $result
+            ));
+            
+        } catch (Exception $e) {
+            iris_log_error('Erreur dans handle_webhook_callback: ' . $e->getMessage());
+            return new WP_Error('webhook_error', 'Erreur lors du traitement du webhook', array('status' => 500));
+        }
+    }
+    
+    /**
+     * Vérifier les permissions pour le webhook
+     * 
+     * @since 1.0.0
+     * @param WP_REST_Request $request
+     * @return bool
+     */
+    public function check_webhook_permission($request) {
+        // Vérifier la clé partagée
+        $shared_key = $request->get_param('shared_key');
+        $expected_key = 'sk-JYNhme53XA61qLy0DQ7uT9FcofWarvSV'; // Même clé que dans functions-api.php
+        
+        if ($shared_key !== $expected_key) {
+            iris_log_error('Webhook: Clé partagée invalide - ' . $shared_key);
+            return false;
+        }
+        
+        // Vérifier que les paramètres requis sont présents
+        $wp_job_id = $request->get_param('wp_job_id');
+        $user_id = $request->get_param('user_id');
+        $status = $request->get_param('status');
+        
+        if (empty($wp_job_id) || empty($user_id) || empty($status)) {
+            iris_log_error('Webhook: Paramètres manquants');
+            return false;
+        }
+        
+        return true;
     }
 }

@@ -124,40 +124,27 @@ function iris_handle_image_upload() {
             null  // pas de réponse API encore
         );
         
-        // 10. Appel API externe avec wp_job_id et source_file
-        $api_url = IRIS_API_URL . '/customers/process';
-        $api_key = 'sk-JYNhme53XA61qLy0DQ7uT9FcofWarvSV';
-        $api_payload = array(
-            'external_id' => strval($user_id),
-            'wp_job_id' => $created_job_id,
-            'source_file' => basename($file_path),
-            'preset_file' => $s3_preset_key ? $s3_preset_key : '',
+        // 10. Appel API externe avec la nouvelle fonction
+        $source_file_with_date = date('Ymd') . '_' . basename($file_path);
+        $preset_file_name = $s3_preset_key ? basename($s3_preset_key, '.json') : 'default';
+        
+        $api_response = iris_send_to_python_api(
+            $user_id,
+            $created_job_id,
+            $source_file_with_date,
+            $preset_file_name
         );
-        $api_args = array(
-            'headers' => array(
-                'api_key' => $api_key,
-                'Content-Type' => 'application/json',
-            ),
-            'body' => json_encode($api_payload),
-            'timeout' => 15,
-        );
-        $api_response = wp_remote_post($api_url, $api_args);
-        if (is_wp_error($api_response)) {
-            iris_log_error('IRIS API ERROR: ' . $api_response->get_error_message());
-        } else {
-            iris_log_error('IRIS API: Réponse ' . wp_remote_retrieve_response_code($api_response));
-        }
         
         // Mise à jour du job avec la réponse API
         $job_id = null;
-        $api_body = null;
-        if (!is_wp_error($api_response) && isset($api_response['body'])) {
-            $api_body = json_decode($api_response['body'], true);
-            if (isset($api_body['job_id'])) {
-                $job_id = $api_body['job_id'];
+        if (!is_wp_error($api_response)) {
+            if (isset($api_response['job_id'])) {
+                $job_id = $api_response['job_id'];
                 // Mettre à jour le job WordPress avec le job_id de l'API
-                iris_update_job_api_response($created_job_id, $job_id, $api_response['body']);
+                iris_update_job_api_response($created_job_id, $job_id, json_encode($api_response));
             }
+        } else {
+            iris_log_error('IRIS API ERROR: ' . $api_response->get_error_message());
         }
         
         // Succès !

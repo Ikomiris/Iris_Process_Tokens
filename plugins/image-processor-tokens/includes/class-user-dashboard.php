@@ -773,10 +773,12 @@ class User_Dashboard {
         global $wpdb;
         
         $table_jobs = $wpdb->prefix . 'iris_processing_jobs';
+        $table_presets = $wpdb->prefix . 'iris_presets';
         
         $jobs = $wpdb->get_results($wpdb->prepare(
-            "SELECT j.* 
+            "SELECT j.*, p.preset_name 
              FROM $table_jobs j 
+             LEFT JOIN $table_presets p ON j.preset_id = p.id
              WHERE j.user_id = %d 
              ORDER BY j.created_at DESC 
              LIMIT %d",
@@ -790,35 +792,45 @@ class User_Dashboard {
                     </div>';
         }
         
-        $html = '<div class="iris-recent-jobs-list">';
+        $html = '<div class="iris-history-items">';
         
         foreach ($jobs as $job) {
-            $status_icon = $this->get_status_icon($job->status);
             $status_class = 'iris-status-' . $job->status;
+            $status_text = $this->get_status_text($job->status);
             
-            $html .= '<div class="iris-job-item ' . $status_class . '">';
-            $html .= '<div class="iris-job-info">';
-            $html .= '<div class="iris-job-file">' . esc_html($job->original_file) . '</div>';
+            // URL pour la miniature JPG
+            $thumbnail_url = 'https://btrjln6o7e.execute-api.eu-west-1.amazonaws.com/iris4pro/customers/process/download/jpg/' . $job->job_id;
             
+            // URL pour le téléchargement PSD (seulement si terminé)
+            $download_url = 'https://btrjln6o7e.execute-api.eu-west-1.amazonaws.com/iris4pro/customers/process/download/psd/' . $job->job_id;
+            
+            $html .= '<div class="iris-history-item ' . $status_class . '">';
+            
+            // Informations du fichier
+            $html .= '<div class="iris-history-info">';
+            $html .= '<strong>' . esc_html($job->original_file) . '</strong>';
             if ($job->preset_name) {
-                $html .= '<div class="iris-job-preset">🎨 ' . esc_html($job->preset_name) . '</div>';
+                $html .= '<small>🎨 ' . esc_html($job->preset_name) . '</small>';
             }
-            
-            $html .= '<div class="iris-job-meta">';
-            $html .= '<span class="iris-job-date">' . human_time_diff(strtotime($job->created_at)) . ' ago</span>';
-            $html .= '</div>';
+            $html .= '<span class="iris-status-badge iris-status-' . $job->status . '">' . $status_text . '</span>';
             $html .= '</div>';
             
-            $html .= '<div class="iris-job-status">';
-            $html .= '<span class="iris-status-badge">' . $status_icon . ' ' . $this->get_status_text($job->status) . '</span>';
-            
-            if ($job->status === 'completed' && $job->result_files) {
-                $html .= '<div class="iris-job-actions">';
-                $html .= '<a href="' . wp_nonce_url(home_url('/wp-json/iris/v1/download/' . $job->job_id . '/result.tiff'), 'iris_download_' . $job->job_id) . '" class="iris-download-btn">⬇️ Télécharger</a>';
+            // Section téléchargement (seulement si terminé)
+            if ($job->status === 'completed') {
+                $html .= '<div class="iris-download-section">';
+                $html .= '<a href="' . esc_url($download_url) . '" class="iris-download-btn" download>Télécharger le fichier</a>';
                 $html .= '</div>';
             }
             
+            // Date et heure
+            $html .= '<span class="iris-date">' . date('d/m/Y H:i', strtotime($job->created_at)) . '</span>';
+            
+            // Miniature
+            $html .= '<div class="iris-thumbnail-container">';
+            $html .= '<img src="' . esc_url($thumbnail_url) . '" alt="Photo miniature" class="iris-thumbnail-image" onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'block\';">';
+            $html .= '<div class="iris-thumbnail-placeholder" style="display:none;">Photo miniature</div>';
             $html .= '</div>';
+            
             $html .= '</div>';
         }
         

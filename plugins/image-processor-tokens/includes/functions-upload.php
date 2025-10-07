@@ -125,8 +125,8 @@ function iris_handle_image_upload() {
         );
         
         // 10. Appel API externe avec la nouvelle fonction
-        $source_file_with_date = date('Ymd') . '_' . basename($file_path);
-        $preset_file_name = $s3_preset_key ? basename($s3_preset_key, '.json') : 'default';
+        $source_file_with_date = basename($file_path);
+        $preset_file_name = $s3_preset_key ? basename($s3_preset_key) : 'default';
         
         $api_response = iris_send_to_python_api(
             $user_id,
